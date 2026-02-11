@@ -81,6 +81,57 @@ def _load_role(wf_dir: Path, role_name: str, workflow: WorkflowDefinition) -> Ro
 
 
 # ---------------------------------------------------------------------------
+# Backend factory
+# ---------------------------------------------------------------------------
+
+def _create_backend(name: str, config: dict) -> "Backend":
+    """Create a backend instance by name.
+
+    Args:
+        name: Backend name (manual, openai, anthropic, cursor)
+        config: relay.yml config dict (may contain backend-specific settings)
+    """
+    from relay.backends.base import Backend
+
+    backend_config = config.get("backend_config", {})
+
+    if name == "manual":
+        from relay.backends.manual import ManualBackend
+        return ManualBackend()
+
+    elif name == "openai":
+        from relay.backends.openai_backend import OpenAIBackend
+        return OpenAIBackend(
+            model=backend_config.get("model", "gpt-4o"),
+            api_key=backend_config.get("api_key"),
+            temperature=backend_config.get("temperature", 0.2),
+            max_tokens=backend_config.get("max_tokens", 16384),
+        )
+
+    elif name == "anthropic":
+        from relay.backends.anthropic_backend import AnthropicBackend
+        return AnthropicBackend(
+            model=backend_config.get("model", "claude-sonnet-4-20250514"),
+            api_key=backend_config.get("api_key"),
+            temperature=backend_config.get("temperature", 0.2),
+            max_tokens=backend_config.get("max_tokens", 16384),
+        )
+
+    elif name == "cursor":
+        from relay.backends.cursor_backend import CursorBackend
+        return CursorBackend(
+            cursor_cmd=backend_config.get("cursor_cmd", "cursor"),
+        )
+
+    else:
+        console.print(
+            f"[red]Unknown backend: '{name}'. "
+            f"Available: manual, openai, anthropic, cursor[/red]"
+        )
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
 
@@ -365,7 +416,6 @@ def run(
     backend_name: Optional[str] = typer.Option(None, "--backend", "-b", help="Backend to use"),
 ) -> None:
     """Run the next agent using the configured backend."""
-    from relay.backends.manual import ManualBackend
     from relay.prompt import compose_prompt
 
     relay_dir = _find_relay_dir()
@@ -378,12 +428,14 @@ def run(
     # Load config
     relay_yml = relay_dir / "relay.yml"
     max_chars = 50000
+    config: dict = {}
     if relay_yml.exists():
         config = yaml.safe_load(relay_yml.read_text()) or {}
         max_chars = config.get("max_artifact_chars", 50000)
 
-    # Select backend
-    backend = ManualBackend()  # Default; extensible later
+    # Select backend — CLI flag > relay.yml config > default (manual)
+    effective_backend = backend_name or config.get("backend", "manual")
+    backend = _create_backend(effective_backend, config)
 
     async def _run_once() -> bool:
         """Run one agent cycle. Returns True if should continue, False if done."""

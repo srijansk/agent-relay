@@ -203,12 +203,57 @@ This generates `.cursor/rules/*.mdc` files and `.cursor/prompts/*.txt` files tha
 
 ---
 
+## Backends (How Agents Get Invoked)
+
+Agent Relay supports multiple backends for invoking agents:
+
+| Backend | Command | What it does |
+|---------|---------|-------------|
+| **manual** (default) | `relay run` | Prints prompt, waits for you to paste into your tool and press Enter |
+| **openai** | `relay run --backend openai` | Calls OpenAI API (gpt-4o by default), writes response to artifact file |
+| **anthropic** | `relay run --backend anthropic` | Calls Anthropic API (Claude), writes response to artifact file |
+| **cursor** | `relay run --backend cursor` | Invokes Cursor CLI (requires `cursor` in PATH) |
+
+### Fully automated loop
+
+```bash
+# Run the entire workflow end-to-end with OpenAI
+export OPENAI_API_KEY=sk-...
+relay run --loop --backend openai
+
+# Or with Anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+relay run --loop --backend anthropic
+```
+
+### Configure the default backend
+
+Set it in `.relay/relay.yml`:
+
+```yaml
+default_workflow: default
+backend: openai
+backend_config:
+  model: gpt-4o-mini
+  temperature: 0.2
+  max_tokens: 16384
+```
+
+### Install backend dependencies
+
+```bash
+pip install agent-relay[openai]      # For OpenAI backend
+pip install agent-relay[anthropic]   # For Anthropic backend
+```
+
+---
+
 ## How It Works (Under the Hood)
 
 1. **Protocol layer**: Pydantic v2 models validate `workflow.yml` and `roles/*.yml` with clear error messages
 2. **State machine**: Tracks the current stage, resolves transitions (linear or branching via verdict extraction)
 3. **Verdict extraction**: Regex parses agent output for `## Verdict: APPROVE` patterns
-4. **Backends**: Pluggable agent invocation (manual mode ships first; API backends for automation)
+4. **Backends**: Pluggable agent invocation — manual, OpenAI, Anthropic, Cursor CLI
 5. **TUI**: Textual-based dashboard shows live workflow state
 
 ---
