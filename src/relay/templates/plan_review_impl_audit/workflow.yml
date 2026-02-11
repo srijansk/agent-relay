@@ -1,0 +1,59 @@
+name: "plan-review-implement-audit"
+version: 1
+
+roles:
+  planner:
+    description: "Creates and refines implementation plans"
+    writes: [plan.md]
+    reads: [context.md, plan_review.md]
+    rules: roles/planner.yml
+
+  reviewer:
+    description: "Reviews plans for correctness and completeness"
+    writes: [plan_review.md]
+    reads: [context.md, plan.md]
+    rules: roles/reviewer.yml
+
+  implementer:
+    description: "Implements the approved plan"
+    writes: [build_log.md]
+    reads: [context.md, plan.md, build_review.md]
+    rules: roles/implementer.yml
+
+  auditor:
+    description: "Verifies implementation correctness"
+    writes: [build_review.md]
+    reads: [plan.md, build_log.md, acceptance_checklist.md]
+    rules: roles/auditor.yml
+
+stages:
+  plan_draft:
+    agent: planner
+    next: plan_review
+  plan_review:
+    agent: reviewer
+    next:
+      approve: plan_approved
+      reject: plan_changes
+  plan_changes:
+    agent: planner
+    next: plan_review
+  plan_approved:
+    agent: implementer
+    next: audit_review
+  audit_review:
+    agent: auditor
+    next:
+      approve: done
+      reject: impl_changes
+  impl_changes:
+    agent: implementer
+    next: audit_review
+  done:
+    terminal: true
+
+initial_stage: plan_draft
+
+limits:
+  max_plan_iterations: 5
+  max_impl_iterations: 3
