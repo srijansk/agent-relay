@@ -7,7 +7,7 @@ name = "agent-relay"
 version = "0.1.0"
 description = "Multi-agent workflow orchestrator — docker-compose for AI agents"
 readme = "README.md"
-license = "MIT"
+license = {file = "LICENSE"}
 requires-python = ">=3.10"
 authors = [
     { name = "Agent Relay Contributors" },
