@@ -144,6 +144,7 @@ REASONING: <one sentence>"""
         stage: str,
         role_name: str,
         output_summary: str,
+        is_branching: bool = False,
     ) -> PostStepResult:
         """Evaluate after an agent completes. Returns alignment assessment.
 
@@ -151,6 +152,9 @@ REASONING: <one sentence>"""
             stage: Current stage name
             role_name: The agent that just ran
             output_summary: First 2000 chars of the agent's output
+            is_branching: If True, the agent's output contains a verdict
+                (approve/reject). The orchestrator should evaluate the
+                quality of the agent's work, NOT second-guess the verdict.
         """
         context = self._build_context_summary()
 
@@ -158,6 +162,17 @@ REASONING: <one sentence>"""
             "You are a workflow orchestrator evaluating an agent's output. "
             "Be concise and decisive. Respond in the exact format requested."
         )
+
+        branching_note = ""
+        if is_branching:
+            branching_note = (
+                "\nIMPORTANT: This agent's role includes rendering a verdict "
+                "(approve/reject). Do NOT re-run the agent just because it "
+                "rejected or requested changes — that is valid behavior. "
+                "Only flag RERUN if the agent's analysis itself is shallow, "
+                "off-topic, or misses the point of the intent. A thorough "
+                "rejection with specific feedback is ALIGNED output."
+            )
 
         prompt = f"""## Intent
 {self.intent}
@@ -171,11 +186,12 @@ REASONING: <one sentence>"""
 
 ## Agent Output (summary)
 {output_summary[:2000]}
+{branching_note}
 
 ## Your Task
 Evaluate whether this output aligns with the intent and is good enough to proceed.
-1. ALIGNED: yes or no
-2. RERUN: yes or no (should we re-run this agent with corrections?)
+1. ALIGNED: yes or no (is the agent's WORK aligned, not whether its verdict is positive)
+2. RERUN: yes or no (only if the agent did a poor job, NOT because it rejected something)
 3. CONCERNS: Any concerns to flag for the next agent (comma-separated, or "none")
 4. SUMMARY: One-sentence summary of what this agent produced
 5. REASONING: One sentence explaining your assessment

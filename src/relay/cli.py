@@ -543,6 +543,7 @@ def run(
                     stage=state.stage,
                     role_name=role_name,
                     output_summary=output_summary,
+                    is_branching=machine.is_branching,
                 )
                 if post.should_rerun:
                     console.print(
