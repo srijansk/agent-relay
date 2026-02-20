@@ -437,6 +437,24 @@ def run(
     effective_backend = backend_name or config.get("backend", "manual")
     backend = _create_backend(effective_backend, config)
 
+    # Initialize orchestrator if enabled
+    orch = None
+    orch_config = config.get("orchestrator", {})
+    if orch_config.get("enabled", False):
+        from relay.orchestrator import Orchestrator
+        intent = orch_config.get("intent", "")
+        if not intent:
+            console.print("[red]Orchestrator is enabled but no intent is configured in relay.yml[/red]")
+            raise typer.Exit(1)
+        orch = Orchestrator(
+            intent=intent,
+            provider=orch_config.get("provider", "openai"),
+            model=orch_config.get("model", "gpt-4o"),
+            api_key=orch_config.get("api_key"),
+            log_path=wf_dir / "orchestrator_log.yml",
+        )
+        console.print(f"[cyan]Orchestrator enabled ({orch.provider} / {orch.model})[/cyan]")
+
     async def _run_once() -> bool:
         """Run one agent cycle. Returns True if should continue, False if done."""
         state = _load_state(wf_dir)
@@ -464,8 +482,37 @@ def run(
         role = _load_role(wf_dir, role_name, wf)
         role_def = wf.roles[role_name]
 
-        # Compose prompt
-        prompt = compose_prompt(wf, state, role, artifact_dir, max_chars)
+        # --- Orchestrator pre-step ---
+        orchestrator_enrichment = ""
+        if orch:
+            console.print(f"[dim]Orchestrator: evaluating pre-step for {role_name}...[/dim]")
+            try:
+                artifact_summaries = {
+                    name: content[:500]
+                    for name, content in read_artifacts(artifact_dir, role_def.reads, 500).items()
+                }
+                pre = await orch.pre_step(
+                    stage=state.stage,
+                    role_name=role_name,
+                    role_description=role_def.description,
+                    artifact_summaries=artifact_summaries,
+                )
+                if not pre.proceed:
+                    console.print(f"[yellow]Orchestrator: skipping {role_name} — {pre.reasoning}[/yellow]")
+                    return False
+
+                orchestrator_enrichment = orch.get_enrichment_for_prompt()
+                if pre.prompt_enrichment:
+                    orchestrator_enrichment += f"\n\n### Orchestrator Note for This Step\n{pre.prompt_enrichment}"
+
+                if pre.reasoning:
+                    console.print(f"[dim]Orchestrator: {pre.reasoning}[/dim]")
+            except Exception as e:
+                console.print(f"[red]Orchestrator pre-step failed: {e}[/red]")
+                console.print("[yellow]Continuing without orchestrator enrichment.[/yellow]")
+
+        # Compose prompt (with orchestrator enrichment if available)
+        prompt = compose_prompt(wf, state, role, artifact_dir, max_chars, orchestrator_enrichment)
 
         # Build run context
         from relay.backends.base import RunContext
@@ -486,6 +533,36 @@ def run(
         if not result.success:
             console.print(f"[red]Agent failed: {result.error}[/red]")
             return False
+
+        # --- Orchestrator post-step ---
+        if orch and result.output_file and result.output_file.exists():
+            console.print(f"[dim]Orchestrator: evaluating output from {role_name}...[/dim]")
+            try:
+                output_summary = result.output_file.read_text()[:2000]
+                post = await orch.post_step(
+                    stage=state.stage,
+                    role_name=role_name,
+                    output_summary=output_summary,
+                )
+                if post.should_rerun:
+                    console.print(
+                        f"[yellow]Orchestrator: output misaligned, requesting re-run — "
+                        f"{post.reasoning}[/yellow]"
+                    )
+                    if post.rerun_feedback:
+                        console.print(f"[dim]Feedback: {post.rerun_feedback}[/dim]")
+                    return True
+
+                if post.concerns:
+                    console.print(
+                        f"[dim]Orchestrator concerns for next step: "
+                        f"{', '.join(post.concerns)}[/dim]"
+                    )
+                if post.summary:
+                    console.print(f"[dim]Orchestrator: {post.summary}[/dim]")
+            except Exception as e:
+                console.print(f"[red]Orchestrator post-step failed: {e}[/red]")
+                console.print("[yellow]Continuing without orchestrator evaluation.[/yellow]")
 
         # Resolve transition
         if machine.is_branching:

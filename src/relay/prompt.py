@@ -16,11 +16,13 @@ def compose_prompt(
     role: RoleSpec,
     artifact_dir: Path,
     max_artifact_chars: int = 50_000,
+    orchestrator_enrichment: str = "",
 ) -> str:
     """Compose a complete prompt for the current agent role.
 
     Combines the role's system prompt, current state context,
-    input artifact contents, and output instructions.
+    input artifact contents, output instructions, and optional
+    orchestrator enrichment (intent + prior step context).
     """
     role_def = workflow.roles.get(state.stage and workflow.stages[state.stage].agent or "")
     reads = role_def.reads if role_def else []
@@ -84,6 +86,11 @@ def compose_prompt(
             f"IMPORTANT: Your output MUST include a line: "
             f"## {role.verdict_field}: {role.approve_value} or {role.reject_value}"
         )
+
+    # Orchestrator enrichment (intent + prior context, injected when orchestrator is enabled)
+    if orchestrator_enrichment:
+        parts.append("")
+        parts.append(orchestrator_enrichment)
 
     return "\n".join(parts)
 

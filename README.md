@@ -203,6 +203,56 @@ This generates `.cursor/rules/*.mdc` files and `.cursor/prompts/*.txt` files tha
 
 ---
 
+## Orchestrator (Intelligent Agent Coordination)
+
+By default, Agent Relay runs mechanically — it follows the state machine transitions without evaluating whether agents are staying on track. Enable the **orchestrator** to add an intelligent layer that holds your intent, evaluates agent outputs, and course-corrects when agents drift.
+
+### What the orchestrator does
+
+1. **Intent injection**: Every agent's prompt is enriched with your project intent and a summary of prior steps
+2. **Post-step evaluation**: After each agent finishes, the orchestrator evaluates whether the output aligns with the vision
+3. **Course correction**: If an agent's output drifts, the orchestrator can request a re-run with specific feedback
+4. **Context accumulation**: A persistent log of decisions and concerns flows through the entire workflow
+
+### Enable the orchestrator
+
+Add this to `.relay/relay.yml`:
+
+```yaml
+backend: openai
+orchestrator:
+  enabled: true
+  provider: openai          # openai or anthropic
+  model: gpt-4o
+  intent: |
+    We are building a REST API for user management.
+    Philosophy: incremental delivery, no breaking changes, test-first.
+    Key constraint: must maintain backward compatibility with v1 API.
+```
+
+Then run:
+
+```bash
+relay run --loop --backend openai
+```
+
+The orchestrator makes two cheap LLM calls per step (~500 tokens each):
+- **Pre-step**: "Should we proceed with this agent? Any context to add to the prompt?"
+- **Post-step**: "Does this output align with the intent? Any concerns for the next agent?"
+
+### Without the orchestrator vs with
+
+| Without (mechanical) | With orchestrator |
+|---------------------|-------------------|
+| Planner follows template blindly | Planner gets intent + prior context in every prompt |
+| Reviewer checks plan structure only | Reviewer's prompt includes orchestrator concerns from prior steps |
+| No one catches philosophical drift | Orchestrator flags when output misses the point |
+| State machine follows transitions | Orchestrator can request re-runs before advancing |
+
+The orchestrator log is persisted at `.relay/workflows/{name}/orchestrator_log.yml` and survives restarts.
+
+---
+
 ## Backends (How Agents Get Invoked)
 
 Agent Relay supports multiple backends for invoking agents:
