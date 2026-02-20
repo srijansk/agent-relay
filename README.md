@@ -1,9 +1,14 @@
 # Agent Relay
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-111%20passed-brightgreen.svg)]()
+
 **Docker Compose for AI agents.** Define multi-agent workflows as config files. Orchestrate from your terminal. Works with any agent tool.
 
-```
-pip install agent-relay
+```bash
+# Install from source (PyPI coming soon)
+pip install git+https://github.com/srijansk/agent-relay.git
 ```
 
 ---
@@ -71,20 +76,21 @@ Everything lives in `.relay/` in your repo:
 
 ```
 .relay/
-  relay.yml                    # Global config (default workflow, backend)
+  relay.yml                      # Global config (default workflow, backend, orchestrator)
   workflows/
     default/
-      workflow.yml             # State machine definition
-      state.yml                # Current state (auto-managed)
+      workflow.yml               # State machine definition
+      state.yml                  # Current state (auto-managed)
+      orchestrator_log.yml       # Orchestrator decisions and context (when enabled)
       roles/
-        planner.yml            # Behavioral rules for planner agent
-        reviewer.yml           # Behavioral rules for reviewer agent
+        planner.yml              # Behavioral rules for planner agent
+        reviewer.yml             # Behavioral rules for reviewer agent
         ...
       artifacts/
-        context.md             # Project context (you fill this in)
-        plan.md                # Written by planner, read by reviewer
-        plan_review.md         # Written by reviewer, read by planner
-        build_log.md           # Written by implementer
+        context.md               # Project context (you fill this in)
+        plan.md                  # Written by planner, read by reviewer
+        plan_review.md           # Written by reviewer, read by planner
+        build_log.md             # Written by implementer
         ...
 ```
 
@@ -303,23 +309,32 @@ pip install agent-relay[anthropic]   # For Anthropic backend
 1. **Protocol layer**: Pydantic v2 models validate `workflow.yml` and `roles/*.yml` with clear error messages
 2. **State machine**: Tracks the current stage, resolves transitions (linear or branching via verdict extraction)
 3. **Verdict extraction**: Regex parses agent output for `## Verdict: APPROVE` patterns
-4. **Backends**: Pluggable agent invocation — manual, OpenAI, Anthropic, Cursor CLI
-5. **TUI**: Textual-based dashboard shows live workflow state
+4. **Orchestrator** (optional): LLM-powered layer that holds intent, enriches prompts, evaluates outputs, and course-corrects
+5. **Backends**: Pluggable agent invocation — manual, OpenAI, Anthropic, Cursor CLI
+6. **TUI**: Textual-based dashboard shows live workflow state
 
 ---
 
 ## Development
 
 ```bash
-git clone https://github.com/your-org/agent-relay.git
+git clone https://github.com/srijansk/agent-relay.git
 cd agent-relay
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest
 ```
 
+## Contributing
+
+Contributions welcome. Please open an issue first to discuss what you'd like to change.
+
+- Follow the existing code style (ruff for linting)
+- Add tests for new functionality
+- Ensure all tests pass before submitting a PR
+
 ---
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.
