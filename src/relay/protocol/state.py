@@ -86,18 +86,21 @@ class StateMachine:
     def check_iteration_limit(self) -> tuple[bool, str | None]:
         """Check if any iteration limit has been reached.
 
-        Returns (limit_reached, message).
+        Returns (limit_reached, message). Only checks limits that
+        match the current stage via word/prefix overlap.
         """
         stage_name = self.state.stage
-        for limit_key, max_val in self.workflow.limits.items():
-            # Match limit keys like "max_plan_iterations" to stage names containing "plan"
-            # Or direct stage name match
-            count = self.get_iteration_count(stage_name)
-            if count >= max_val:
-                return True, (
-                    f"Iteration limit reached for '{stage_name}': "
-                    f"{count}/{max_val} (limit: {limit_key})"
-                )
+        matched_limit = match_limit_to_stage(self.workflow.limits, stage_name)
+        if matched_limit is None:
+            return False, None
+
+        limit_key, max_val = matched_limit
+        count = self.get_iteration_count(stage_name)
+        if count >= max_val:
+            return True, (
+                f"Iteration limit reached for '{stage_name}': "
+                f"{count}/{max_val} (limit: {limit_key})"
+            )
         return False, None
 
     def resolve_linear_transition(self) -> str:
@@ -144,6 +147,47 @@ class StateMachine:
         if target_stage not in self.workflow.stages:
             raise ValueError(f"Unknown target stage: '{target_stage}'")
         self.state.advance(target_stage, role)
+
+
+def match_limit_to_stage(
+    limits: dict[str, int], stage_name: str
+) -> tuple[str, int] | None:
+    """Find the limit that applies to a given stage.
+
+    Uses word overlap + prefix matching to handle abbreviations
+    (e.g., "max_impl_iterations" matches stage "impl_changes" and "implement").
+
+    Returns (limit_key, max_value) or None if no limit matches.
+    """
+    stage_words = set(stage_name.lower().replace("_", " ").split())
+
+    best_match: tuple[str, int] | None = None
+    best_score = 0
+
+    for limit_key, max_val in limits.items():
+        # Extract meaningful words from the limit key (strip "max" and "iterations")
+        limit_words = set(
+            w for w in limit_key.lower().replace("_", " ").split()
+            if w not in ("max", "iterations", "iteration")
+        )
+
+        if not limit_words:
+            continue
+
+        # Score by: exact word matches + prefix matches
+        score = 0
+        for lw in limit_words:
+            for sw in stage_words:
+                if lw == sw:
+                    score += 2  # exact match
+                elif sw.startswith(lw) or lw.startswith(sw):
+                    score += 1  # prefix match (impl ↔ implement)
+
+        if score > best_score:
+            best_score = score
+            best_match = (limit_key, max_val)
+
+    return best_match
 
 
 def extract_verdict(

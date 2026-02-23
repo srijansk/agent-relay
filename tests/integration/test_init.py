@@ -62,7 +62,7 @@ def test_init_duplicate_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
 
 # Template directory lives at src/relay/templates/<template_name>
-_TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "src" / "relay" / "templates" / "plan_review_implement_audit"
+_TEMPLATE_DIR = Path(__file__).resolve().parents[2] / "src" / "relay" / "templates" / "plan_review_impl_audit"
 
 
 @pytest.mark.skipif(

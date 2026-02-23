@@ -592,11 +592,14 @@ def run(
 
         return not wf.stages[target].terminal
 
-    # Run
+    # Run — use a single event loop for the entire session to avoid
+    # RuntimeError from async client cleanup on closed loops
     if loop:
-        should_continue = True
-        while should_continue:
-            should_continue = asyncio.run(_run_once())
+        async def _run_loop():
+            should_continue = True
+            while should_continue:
+                should_continue = await _run_once()
+        asyncio.run(_run_loop())
     else:
         asyncio.run(_run_once())
 
@@ -638,7 +641,7 @@ def validate(
     wf_dir = _workflow_dir(relay_dir, workflow)
 
     if not wf_dir.exists():
-        console.print("[red]No workflow found at {wf_dir}[/red]")
+        console.print(f"[red]No workflow found at {wf_dir}[/red]")
         raise typer.Exit(1)
 
     errors = validate_workflow(wf_dir)
@@ -672,7 +675,7 @@ def dash(
 
 @app.command()
 def export(
-    format: str = typer.Argument(..., help="Export format (cursor, markdown)"),
+    format: str = typer.Argument(..., help="Export format (currently: cursor)"),
     workflow: Optional[str] = typer.Option(None, "--workflow", "-w", help="Workflow name"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output directory"),
 ) -> None:

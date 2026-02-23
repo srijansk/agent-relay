@@ -97,10 +97,7 @@ def compose_prompt(
 
 def _find_iteration_limit(workflow: WorkflowDefinition, stage_name: str) -> int | None:
     """Find the iteration limit that applies to a given stage, if any."""
-    for limit_key, max_val in workflow.limits.items():
-        # Simple heuristic: if limit key contains any word from the stage name
-        stage_words = set(stage_name.lower().replace("_", " ").split())
-        limit_words = set(limit_key.lower().replace("_", " ").replace("max", "").replace("iterations", "").split())
-        if stage_words & limit_words:
-            return max_val
-    return None
+    from relay.protocol.state import match_limit_to_stage
+
+    result = match_limit_to_stage(workflow.limits, stage_name)
+    return result[1] if result else None
