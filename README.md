@@ -40,15 +40,22 @@ That's it. No API keys required. No backend configuration. Just `relay next`, co
 
 Agent Relay coordinates multiple AI agents through a **file-based protocol**:
 
-1. You define a **workflow** (stages, roles, transitions) in `workflow.yml`
-2. Each role has **behavioral rules** and knows what files to read/write
-3. A **state machine** tracks which agent should run next
-4. Agents hand off work through **shared artifact files** (plans, reviews, build logs)
+1. An **agentic orchestrator** holds product intent and decides how to run the orchestra
+2. The orchestrator gauges **task complexity** and **blast radius** to route work across roles
+3. You define a **workflow** (stages, roles, transitions) in `workflow.yml`
+4. A **state machine** tracks execution state and enforces deterministic handoffs
+5. Agents hand off work through **shared artifact files** (plans, reviews, build logs)
 
 ```
+                    ┌──────────────────────────────────────────────┐
+                    │ AGENTIC ORCHESTRATOR                         │
+                    │ intent + complexity + blast-radius routing   │
+                    │ validates trajectory, requests re-runs       │
+                    └──────────────────────────────────────────────┘
+                                         │
+                                         ▼
     ┌──────────┐     ┌──────────┐     ┌─────────────┐     ┌─────────┐
     │ PLANNER  │ ──► │ REVIEWER │ ──► │ IMPLEMENTER │ ──► │ AUDITOR │ ──► DONE
-    │          │     │          │     │             │     │         │
     │ plan.md  │     │review.md │     │build_log.md │     │audit.md │
     └──────────┘     └──────────┘     └─────────────┘     └─────────┘
          ▲                │                                     │
