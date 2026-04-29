@@ -70,13 +70,15 @@ class Lesson(BaseModel):
 # The artifact filename can override this with a more specific signal — see
 # ``_ARTIFACT_TO_ROLE`` below.
 _HEADER_PATTERNS: list[tuple[re.Pattern[str], Severity, str]] = [
-    (re.compile(r"^#{1,3}\s+required\s+changes?\s*$", re.IGNORECASE | re.MULTILINE), "warn", "planner"),
-    (re.compile(r"^#{1,3}\s+catches?\s*$", re.IGNORECASE | re.MULTILINE), "error", "implementer"),
-    (re.compile(r"^#{1,3}\s+concerns?\s*$", re.IGNORECASE | re.MULTILINE), "warn", "planner"),
-    (re.compile(r"^#{1,3}\s+suggestions?\s*$", re.IGNORECASE | re.MULTILINE), "info", "planner"),
-    (re.compile(r"^#{1,3}\s+findings?\s*$", re.IGNORECASE | re.MULTILINE), "warn", "implementer"),
-    (re.compile(r"^#{1,3}\s+gotchas?\s*$", re.IGNORECASE | re.MULTILINE), "warn", "implementer"),
-    (re.compile(r"^#{1,3}\s+lessons?\s+learned\s*$", re.IGNORECASE | re.MULTILINE), "info", "implementer"),
+    (re.compile(r"^#{1,3}\s+required\s+changes?\b.*$", re.IGNORECASE | re.MULTILINE), "warn", "planner"),
+    (re.compile(r"^#{1,3}\s+catches?\b.*$", re.IGNORECASE | re.MULTILINE), "error", "implementer"),
+    (re.compile(r"^#{1,3}\s+must[_\s-]?fix\b.*$", re.IGNORECASE | re.MULTILINE), "error", "implementer"),
+    (re.compile(r"^#{1,3}\s+should[_\s-]?fix\b.*$", re.IGNORECASE | re.MULTILINE), "info", "implementer"),
+    (re.compile(r"^#{1,3}\s+concerns?\b.*$", re.IGNORECASE | re.MULTILINE), "warn", "planner"),
+    (re.compile(r"^#{1,3}\s+suggestions?\b.*$", re.IGNORECASE | re.MULTILINE), "info", "planner"),
+    (re.compile(r"^#{1,3}\s+findings?\b.*$", re.IGNORECASE | re.MULTILINE), "warn", "implementer"),
+    (re.compile(r"^#{1,3}\s+gotchas?\b.*$", re.IGNORECASE | re.MULTILINE), "warn", "implementer"),
+    (re.compile(r"^#{1,3}\s+lessons?\s+learned\b.*$", re.IGNORECASE | re.MULTILINE), "info", "implementer"),
 ]
 
 # Match the next heading at any level so we can slice a section out.

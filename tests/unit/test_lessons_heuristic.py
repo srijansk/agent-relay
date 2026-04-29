@@ -74,6 +74,32 @@ def test_catches_under_audit_yield_error_lessons_for_implementer() -> None:
     assert all(lesson.role == "implementer" for lesson in lessons)
 
 
+def test_must_fix_under_audit_yield_error_lessons_for_implementer() -> None:
+    """Auditor's MUST_FIX section (pria template format) is implementer-audience errors."""
+    audit = """
+## Verdict: REQUEST_CHANGES
+
+## MUST_FIX (blocking)
+- The build log does not cover step 4. The implementer skipped scheduler setup.
+- Test suite was not run after the schema change in src/db.py.
+
+## SHOULD_FIX (non-blocking)
+- Inline comments could be clearer in worker.py.
+"""
+    lessons = parse_artifact_for_lessons(
+        audit,
+        artifact_filename="build_review.md",
+        fallback_role="implementer",
+        run_id="20260429-0525-pria",
+        observed_at=OBSERVED,
+    )
+    severities = [lesson.severity for lesson in lessons]
+    # MUST_FIX → error (2 bullets); SHOULD_FIX → info (1 bullet)
+    assert severities.count("error") == 2
+    assert severities.count("info") == 1
+    assert all(lesson.role == "implementer" for lesson in lessons)
+
+
 def test_suggestions_yield_info_lessons_for_planner() -> None:
     review = """
 ## Suggestions
