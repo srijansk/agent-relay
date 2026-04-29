@@ -1,6 +1,5 @@
 """Tests for valid RoleSpec construction."""
 
-import pytest
 
 from relay.protocol.roles import RoleSpec
 

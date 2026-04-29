@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.syntax import Syntax
 
 from relay.backends.base import Backend, BackendResult, RunContext
 

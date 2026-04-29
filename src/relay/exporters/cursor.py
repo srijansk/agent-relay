@@ -122,7 +122,7 @@ def _generate_prompt(role_name: str, role_def) -> str:
     parts = [
         f"Act as the {role_name.title()} Agent. Follow the rules defined in @.cursor/rules/{role_name}.mdc exactly.",
         "",
-        f"Start by reading .cursor/workflow/state.yml to check the current stage.",
+        "Start by reading .cursor/workflow/state.yml to check the current stage.",
     ]
 
     if reads_str:

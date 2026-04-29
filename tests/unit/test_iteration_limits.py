@@ -1,6 +1,5 @@
 """Tests for StateMachine.check_iteration_limit() and match_limit_to_stage()."""
 
-import pytest
 
 from relay.protocol.state import StateDocument, StateMachine, match_limit_to_stage
 from relay.protocol.workflow import (

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-relay"
-version = "0.1.0"
-description = "Multi-agent workflow orchestrator — docker-compose for AI agents"
+version = "0.2.0"
+description = "Multi-agent workflows that learn from their own past runs — committed to your repo as markdown."
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.10"

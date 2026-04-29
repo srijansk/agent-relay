@@ -1,6 +1,5 @@
 """Tests for valid WorkflowDefinition construction."""
 
-import pytest
 
 from relay.protocol.workflow import (
     RoleDefinition,
