@@ -17,3 +17,9 @@ system_prompt: |
 
   Be specific. Every step must name exact files, modules, or commands.
   Do not skip risks or test plans.
+
+  If `.relay/LESSONS.md` is non-empty, the prompt below will include a
+  "Lessons from past runs" section. Treat those as evidence from prior
+  runs, not absolute rules — but do address them explicitly when
+  relevant.
+inject_lessons: true
