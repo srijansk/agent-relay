@@ -17,7 +17,7 @@ runner = CliRunner()
 @pytest.mark.parametrize(
     "template_name, expected_initial_stage, expected_role_count",
     [
-        ("bug-rca-fix", "reproduce", 5),
+        ("bug-rca-fix", "reproduce", 6),
         ("rfc-then-implement", "rfc_draft", 4),
         ("plan-review-implement-audit", "plan_draft", 4),
     ],

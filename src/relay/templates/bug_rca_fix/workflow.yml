@@ -2,11 +2,17 @@ name: "bug-rca-fix"
 version: 1
 
 roles:
-  rca_agent:
-    description: "Reproduces the bug and isolates the root cause"
-    writes: [repro.md, hypothesis.md]
-    reads: [context.md, build_log.md]
-    rules: roles/rca_agent.yml
+  rca_reproducer:
+    description: "Reproduces the bug deterministically"
+    writes: [repro.md]
+    reads: [context.md]
+    rules: roles/rca_reproducer.yml
+
+  rca_hypothesizer:
+    description: "Forms a root-cause hypothesis from the reproduction"
+    writes: [hypothesis.md]
+    reads: [context.md, repro.md]
+    rules: roles/rca_hypothesizer.yml
 
   planner:
     description: "Plans a fix once the root cause is known"
@@ -34,10 +40,10 @@ roles:
 
 stages:
   reproduce:
-    agent: rca_agent
+    agent: rca_reproducer
     next: hypothesize
   hypothesize:
-    agent: rca_agent
+    agent: rca_hypothesizer
     next: fix_plan
   fix_plan:
     agent: planner
