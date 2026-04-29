@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "generated_at": "2026-04-29T05:22:33.723106+00:00",
+  "lesson_count": 3,
+  "lessons": [
+    {
+      "id": "3c3a11bfd615",
+      "role": "planner",
+      "claim": "While the plan mentions reviewing other endpoints and insertion logic, it should be more focused on the specific bug. Ensure that the changes are minimal and directly related to the bug described in the hypothesis",
+      "severity": "warn",
+      "evidence_run_id": "20260429-0521-bug-rca-fix",
+      "evidence_excerpt": "**Adjacent Code Paths**: While the plan mentions reviewing other endpoints and insertion logic, it should be more focused on the specific bug. Ensure that the changes are minimal and directly related to the bug described in the hypothesis.",
+      "observed_at": "2026-04-29T05:21:00Z",
+      "tags": [],
+      "source": "heuristic"
+    },
+    {
+      "id": "6fbdaee1b555",
+      "role": "planner",
+      "claim": "The plan should start with implementing a failing test that demonstrates the bug. This test should clearly show that the current implementation returns orders from the previous day when today's date is passed as the `since` parameter",
+      "severity": "warn",
+      "evidence_run_id": "20260429-0521-bug-rca-fix",
+      "evidence_excerpt": "**Failing Test**: The plan should start with implementing a failing test that demonstrates the bug. This test should clearly show that the current implementation returns orders from the previous day when today's date is passed as the `since` parameter.",
+      "observed_at": "2026-04-29T05:21:00Z",
+      "tags": [],
+      "source": "heuristic"
+    },
+    {
+      "id": "e37d033b2c89",
+      "role": "planner",
+      "claim": "The rollback plan should specify the exact commit hash to revert if the changes cause issues. This ensures a clear and quick rollback process",
+      "severity": "warn",
+      "evidence_run_id": "20260429-0521-bug-rca-fix",
+      "evidence_excerpt": "**Rollback Instructions**: The rollback plan should specify the exact commit hash to revert if the changes cause issues. This ensures a clear and quick rollback process.",
+      "observed_at": "2026-04-29T05:21:00Z",
+      "tags": [],
+      "source": "heuristic"
+    }
+  ]
+}

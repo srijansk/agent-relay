@@ -1,0 +1,74 @@
+name: "bug-rca-fix"
+version: 1
+
+roles:
+  rca_reproducer:
+    description: "Reproduces the bug deterministically"
+    writes: [repro.md]
+    reads: [context.md]
+    rules: roles/rca_reproducer.yml
+
+  rca_hypothesizer:
+    description: "Forms a root-cause hypothesis from the reproduction"
+    writes: [hypothesis.md]
+    reads: [context.md, repro.md]
+    rules: roles/rca_hypothesizer.yml
+
+  planner:
+    description: "Plans a fix once the root cause is known"
+    writes: [plan.md]
+    reads: [context.md, repro.md, hypothesis.md, plan_review.md]
+    rules: roles/planner.yml
+
+  reviewer:
+    description: "Reviews the fix plan against the hypothesis"
+    writes: [plan_review.md]
+    reads: [context.md, repro.md, hypothesis.md, plan.md]
+    rules: roles/reviewer.yml
+
+  implementer:
+    description: "Applies the planned fix and records what changed"
+    writes: [build_log.md]
+    reads: [context.md, plan.md, audit.md]
+    rules: roles/implementer.yml
+
+  auditor:
+    description: "Verifies the fix actually addresses the original bug"
+    writes: [audit.md]
+    reads: [context.md, repro.md, plan.md, build_log.md]
+    rules: roles/auditor.yml
+
+stages:
+  reproduce:
+    agent: rca_reproducer
+    next: hypothesize
+  hypothesize:
+    agent: rca_hypothesizer
+    next: fix_plan
+  fix_plan:
+    agent: planner
+    next: plan_review
+  plan_review:
+    agent: reviewer
+    next:
+      approve: implement
+      reject: plan_changes
+  plan_changes:
+    agent: planner
+    next: plan_review
+  implement:
+    agent: implementer
+    next: verify
+  verify:
+    agent: auditor
+    next:
+      approve: done
+      reject: implement
+  done:
+    terminal: true
+
+initial_stage: reproduce
+
+limits:
+  max_plan_iterations: 4
+  max_implement_iterations: 3

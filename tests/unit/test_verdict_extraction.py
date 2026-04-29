@@ -1,6 +1,5 @@
 """Tests for extract_verdict() — markdown verdict parsing."""
 
-import pytest
 
 from relay.protocol.state import extract_verdict
 

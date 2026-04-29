@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 240" width="1200" height="240" role="img" aria-label="agent-relay banner">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#10b981"/>
+    </marker>
+    <style>
+      .wm { font-family: "Inter", "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-weight: 600; letter-spacing: -0.02em; }
+      .tg { font-family: "Inter", "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-weight: 400; }
+      .lb { font-family: "Inter", "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-weight: 500; letter-spacing: 0.01em; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="240" fill="#0F1419"/>
+
+  <!-- Single subtle green accent line (left of wordmark) -->
+  <rect x="44" y="82" width="3" height="38" fill="#10b981"/>
+
+  <!-- Wordmark -->
+  <text x="64" y="120" class="wm" font-size="56" fill="#FFFFFF">agent-relay</text>
+
+  <!-- Tagline -->
+  <text x="64" y="158" class="tg" font-size="18" fill="#94A3B8">Multi-agent workflows that learn from their own past runs.</text>
+
+  <!-- Forward arrows (curved, above the row) -->
+  <g fill="none" stroke="#10b981" stroke-width="2">
+    <path d="M 748 120 Q 810 100 872 120" marker-end="url(#arrow)"/>
+    <path d="M 928 120 Q 990 100 1052 120" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Dashed feedback return arrow (Run 2 bottom -> Run 1 bottom) -->
+  <g opacity="0.5">
+    <path d="M 1080 148 Q 900 210 720 148"
+          fill="none" stroke="#10b981" stroke-width="1.5"
+          stroke-dasharray="4 4" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Nodes -->
+  <circle cx="720"  cy="120" r="28" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+  <circle cx="900"  cy="120" r="28" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+  <circle cx="1080" cy="120" r="28" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+
+  <!-- Node labels -->
+  <g class="lb" font-size="13" fill="#FFFFFF" text-anchor="middle">
+    <text x="720"  y="172">Run 1</text>
+    <text x="900"  y="172">distill</text>
+    <text x="1080" y="172">Run 2</text>
+  </g>
+</svg>

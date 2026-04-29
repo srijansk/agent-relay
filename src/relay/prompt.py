@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from relay.lessons import (
+    filter_lessons_for_role,
+    load_lessons,
+    render_lessons_section,
+)
 from relay.protocol.artifacts import read_artifacts
 from relay.protocol.roles import RoleSpec
 from relay.protocol.state import StateDocument
@@ -17,6 +22,8 @@ def compose_prompt(
     artifact_dir: Path,
     max_artifact_chars: int = 50_000,
     orchestrator_enrichment: str = "",
+    lessons_path: Path | None = None,
+    max_lessons: int = 10,
 ) -> str:
     """Compose a complete prompt for the current agent role.
 
@@ -86,6 +93,21 @@ def compose_prompt(
             f"IMPORTANT: Your output MUST include a line: "
             f"## {role.verdict_field}: {role.approve_value} or {role.reject_value}"
         )
+
+    # Compiled lessons from past runs (opt-in per role)
+    if role.inject_lessons and lessons_path is not None:
+        all_lessons = load_lessons(lessons_path)
+        if all_lessons:
+            highly, other = filter_lessons_for_role(
+                all_lessons,
+                role=role.name,
+                reads=reads,
+                max_n=max_lessons,
+            )
+            section = render_lessons_section(highly, other)
+            if section:
+                parts.append("")
+                parts.append(section.rstrip())
 
     # Orchestrator enrichment (intent + prior context, injected when orchestrator is enabled)
     if orchestrator_enrichment:

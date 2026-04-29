@@ -10,7 +10,6 @@ from typing import Any
 import yaml
 from pydantic import BaseModel
 
-from relay.protocol.roles import RoleSpec
 from relay.protocol.workflow import StageDefinition, WorkflowDefinition
 
 

@@ -1,347 +1,230 @@
-# Agent Relay
+<p align="center">
+  <img src="docs/assets/banner.svg" width="900" alt="agent-relay — multi-agent workflows that learn from their own past runs">
+</p>
+
+# agent-relay
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-111%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-165%20passing-brightgreen.svg)](#testing)
 
-**Docker Compose for AI agents.** Define multi-agent workflows as config files. Orchestrate from your terminal. Works with any agent tool.
+> **Multi-agent workflows that learn from their own past runs.**
+> Plans, reviews, build logs, and audits land in your repo as committed
+> artifacts. `relay distill` compiles them into role-typed lessons your
+> next planner reads — so the same task class gets cheaper every time.
+
+<!-- HERO_DEMO_START — replace with the animated demo once generated. -->
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="agent-relay running bug-rca-fix end-to-end and producing forward-looking lessons that the next run consumes" width="780">
+</p>
+<!-- HERO_DEMO_END -->
 
 ```bash
-# Install from source (PyPI coming soon)
 pip install git+https://github.com/srijansk/agent-relay.git
 ```
 
----
+## How it actually compounds
 
-## Quick Start (30 seconds)
+<p align="center">
+  <img src="docs/assets/compounding-loop.svg" width="100%" alt="Three panels showing Run 1 (REQUEST_CHANGES) → relay distill --llm produces 5 forward-looking lessons → Run 2 APPROVE on first pass, with the reviewer's verdict citing each lesson">
+</p>
+
+The loop closes when the reviewer's rejection on Run 1 becomes a lesson the
+planner reads on Run 2. **No memory layer, no vector store** — just markdown
+your team can edit, commit, and review like any other knowledge artifact.
+
+## Captured proof
+
+This isn't a thought experiment. From the run captured in
+[`docs/demo-output/`](docs/demo-output/) against `gpt-4o`:
+
+**Run 1** (no lessons) — planner gave a vague rollback ("revert the changes
+by checking out the previous commit using its hash"), no concrete failing
+test, missed adjacent paths. **Reviewer rejected.** Hit iteration cap.
+
+`relay distill --llm` compressed the rejection into 5 forward-looking
+lessons, the substantive ones being:
+
+- "Always include a specific failing test in the plan to demonstrate the bug before applying any fixes."
+- "Always specify the exact file changes or commits that need to be undone in the rollback section."
+- "Explicitly include steps to review and test adjacent code paths for similar issues when addressing a bug."
+
+**Run 2** (different bug, same task class, lessons in the planner's prompt) —
+plan addressed all three proactively. **Reviewer APPROVED on first pass**,
+verdict cited each lesson by name:
+
+> *"The plan includes a failing test-first approach with specific tests... The rollback strategy is concrete, specifying the file and nature of the change to be reverted... considers adjacent paths that might be affected by similar issues..."*
+
+That's the receipts. See [`docs/demo-output/README.md`](docs/demo-output/README.md)
+for the full side-by-side. Reproduce on your own key with
+[`scripts/capture-compounding-demo.sh`](scripts/capture-compounding-demo.sh).
+
+## In 30 seconds
 
 ```bash
-# Initialize a 4-agent workflow (Planner → Reviewer → Implementer → Auditor)
-relay init --template plan-review-implement-audit
+# Initialise a 5-stage bug-fix workflow (reproduce → hypothesise → plan → fix → verify)
+relay init --template bug-rca-fix
 
-# See the current state
-relay status
+# See the prompt for the active role
+relay next                       # paste it into Claude Code, Cursor, Codex...
 
-# Get the prompt for the next agent — copy into Cursor, Codex, Aider, or any tool
-relay next
-
-# After the agent finishes, advance the workflow
+# After the agent writes its artifact, advance
 relay advance
 
-# Or launch the TUI dashboard
-relay dash
+# When the workflow completes, it snapshots to .relay/history/<run-id>/.
+# Compile lessons from accumulated history at any time:
+relay distill                    # heuristic: parse rejection bullets, role-typed
+relay distill --llm              # LLM-backed: groups bullets, rewrites in 2nd-person
+
+# The next run on a similar bug will see those lessons in the planner's prompt.
 ```
 
-That's it. No API keys required. No backend configuration. Just `relay next`, copy the prompt, paste into your agent tool, and `relay advance` when done.
-
----
-
-## What It Does
-
-Agent Relay coordinates multiple AI agents through a **file-based protocol**:
-
-1. An **agentic orchestrator** holds product intent and decides how to run the orchestra
-2. The orchestrator gauges **task complexity** and **blast radius** to route work across roles
-3. You define a **workflow** (stages, roles, transitions) in `workflow.yml`
-4. A **state machine** tracks execution state and enforces deterministic handoffs
-5. Agents hand off work through **shared artifact files** (plans, reviews, build logs)
-
-```
-                    ┌──────────────────────────────────────────────┐
-                    │ AGENTIC ORCHESTRATOR                         │
-                    │ intent + complexity + blast-radius routing   │
-                    │ validates trajectory, requests re-runs       │
-                    └──────────────────────────────────────────────┘
-                                         │
-                                         ▼
-    ┌──────────┐     ┌──────────┐     ┌─────────────┐     ┌─────────┐
-    │ PLANNER  │ ──► │ REVIEWER │ ──► │ IMPLEMENTER │ ──► │ AUDITOR │ ──► DONE
-    │ plan.md  │     │review.md │     │build_log.md │     │audit.md │
-    └──────────┘     └──────────┘     └─────────────┘     └─────────┘
-         ▲                │                                     │
-         └── changes ─────┘                 ▲                   │
-                                            └── changes ────────┘
-```
-
-## Why Not Just Use CrewAI / LangGraph / AutoGen?
-
-| Feature | CrewAI / LangGraph | Agent Relay |
-|---------|-------------------|-------------|
-| How you define agents | Write Python code | Write YAML config |
-| Runtime | Locked to their framework | **Works with any tool** (Cursor, Codex, Aider, Ollama, ChatGPT) |
-| Where state lives | In memory / database | **In your repo** (version-controlled files) |
-| Human in the loop | Afterthought | **First-class** (`relay next` → copy-paste → `relay advance`) |
-| Entry point | Install SDK, write code, configure API keys | `pip install agent-relay && relay init` |
-
-Agent Relay is the **glue layer** between your agent tools and your workflow. It doesn't replace your agents — it coordinates them.
-
----
-
-## The Protocol
-
-Everything lives in `.relay/` in your repo:
-
-```
-.relay/
-  relay.yml                      # Global config (default workflow, backend, orchestrator)
-  workflows/
-    default/
-      workflow.yml               # State machine definition
-      state.yml                  # Current state (auto-managed)
-      orchestrator_log.yml       # Orchestrator decisions and context (when enabled)
-      roles/
-        planner.yml              # Behavioral rules for planner agent
-        reviewer.yml             # Behavioral rules for reviewer agent
-        ...
-      artifacts/
-        context.md               # Project context (you fill this in)
-        plan.md                  # Written by planner, read by reviewer
-        plan_review.md           # Written by reviewer, read by planner
-        build_log.md             # Written by implementer
-        ...
-```
-
-### workflow.yml
-
-```yaml
-name: "my-project"
-version: 1
-
-roles:
-  planner:
-    description: "Creates implementation plans"
-    writes: [plan.md]
-    reads: [context.md, plan_review.md]
-    rules: roles/planner.yml
-
-  reviewer:
-    description: "Reviews plans for correctness"
-    writes: [plan_review.md]
-    reads: [context.md, plan.md]
-    rules: roles/reviewer.yml
-
-stages:
-  plan_draft:    { agent: planner,  next: plan_review }
-  plan_review:   { agent: reviewer, next: { approve: done, reject: plan_changes } }
-  plan_changes:  { agent: planner,  next: plan_review }
-  done:          { terminal: true }
-
-initial_stage: plan_draft
-limits:
-  max_plan_iterations: 5
-```
-
-### roles/*.yml
-
-```yaml
-name: reviewer
-system_prompt: |
-  You are a Reviewer. Critically evaluate the plan for
-  correctness, completeness, and feasibility.
-
-output_format: |
-  ## Verdict: APPROVE | REQUEST_CHANGES
-  ## Summary: ...
-  ## Required Changes: ...
-
-verdict_field: "Verdict"
-approve_value: "APPROVE"
-reject_value: "REQUEST_CHANGES"
-```
-
-The `verdict_field` enables **automatic branching**: Relay reads the agent's output, extracts the verdict, and follows the correct branch in the state machine.
-
----
-
-## CLI Commands
-
-| Command | What it does |
-|---------|-------------|
-| `relay init` | Create a new workflow |
-| `relay init --template plan-review-implement-audit` | Use the built-in 4-agent template |
-| `relay init --name feature-x` | Create a named workflow (multiple per repo) |
-| `relay status` | Show current stage, active role, iterations |
-| `relay next` | Print the prompt for the next agent |
-| `relay advance` | Advance to the next stage (auto-extracts verdict for branching) |
-| `relay run` | Run with backend (manual: print + wait) |
-| `relay run --loop` | Run the full loop until done or limit hit |
-| `relay dash` | TUI dashboard |
-| `relay reset` | Reset to initial stage |
-| `relay reset --clean` | Reset + wipe artifacts |
-| `relay validate` | Check workflow.yml for errors |
-| `relay export cursor` | Export to Cursor `.mdc` rules + prompts |
-
-## Multiple Workflows
-
-Run multiple workflows in the same repo:
+Or let agent-relay drive the whole loop end-to-end with a backend:
 
 ```bash
-relay init --name ark-m0 --template plan-review-implement-audit
-relay init --name ark-m1 --template plan-review-implement-audit
-
-relay status --workflow ark-m0
-relay next --workflow ark-m1
-```
-
----
-
-## Built-in Templates
-
-### plan-review-implement-audit
-
-The classic 4-agent loop:
-
-- **Planner** creates an implementation plan
-- **Reviewer** critically reviews it (APPROVE / REQUEST_CHANGES)
-- **Implementer** builds it, maintaining a build log
-- **Auditor** verifies correctness, catches shortcuts (APPROVE / REQUEST_CHANGES)
-
-```bash
-relay init --template plan-review-implement-audit
-```
-
-More templates coming: `code-review`, `research-write-edit`, `debug-fix-verify`.
-
----
-
-## Export to Cursor
-
-If you use Cursor IDE, you can export your workflow to Cursor-native format:
-
-```bash
-relay export cursor
-```
-
-This generates `.cursor/rules/*.mdc` files and `.cursor/prompts/*.txt` files that you can use directly in Cursor's agent sessions.
-
----
-
-## Orchestrator (Intelligent Agent Coordination)
-
-By default, Agent Relay runs mechanically — it follows the state machine transitions without evaluating whether agents are staying on track. Enable the **orchestrator** to add an intelligent layer that holds your intent, evaluates agent outputs, and course-corrects when agents drift.
-
-### What the orchestrator does
-
-1. **Intent injection**: Every agent's prompt is enriched with your project intent and a summary of prior steps
-2. **Post-step evaluation**: After each agent finishes, the orchestrator evaluates whether the output aligns with the vision
-3. **Course correction**: If an agent's output drifts, the orchestrator can request a re-run with specific feedback
-4. **Context accumulation**: A persistent log of decisions and concerns flows through the entire workflow
-
-### Enable the orchestrator
-
-Add this to `.relay/relay.yml`:
-
-```yaml
-backend: openai
-orchestrator:
-  enabled: true
-  provider: openai          # openai or anthropic
-  model: gpt-4o
-  intent: |
-    We are building a REST API for user management.
-    Philosophy: incremental delivery, no breaking changes, test-first.
-    Key constraint: must maintain backward compatibility with v1 API.
-```
-
-Then run:
-
-```bash
-relay run --loop --backend openai
-```
-
-The orchestrator makes two cheap LLM calls per step (~500 tokens each):
-- **Pre-step**: "Should we proceed with this agent? Any context to add to the prompt?"
-- **Post-step**: "Does this output align with the intent? Any concerns for the next agent?"
-
-### Without the orchestrator vs with
-
-| Without (mechanical) | With orchestrator |
-|---------------------|-------------------|
-| Planner follows template blindly | Planner gets intent + prior context in every prompt |
-| Reviewer checks plan structure only | Reviewer's prompt includes orchestrator concerns from prior steps |
-| No one catches philosophical drift | Orchestrator flags when output misses the point |
-| State machine follows transitions | Orchestrator can request re-runs before advancing |
-
-The orchestrator log is persisted at `.relay/workflows/{name}/orchestrator_log.yml` and survives restarts.
-
----
-
-## Backends (How Agents Get Invoked)
-
-Agent Relay supports multiple backends for invoking agents:
-
-| Backend | Command | What it does |
-|---------|---------|-------------|
-| **manual** (default) | `relay run` | Prints prompt, waits for you to paste into your tool and press Enter |
-| **openai** | `relay run --backend openai` | Calls OpenAI API (gpt-4o by default), writes response to artifact file |
-| **anthropic** | `relay run --backend anthropic` | Calls Anthropic API (Claude), writes response to artifact file |
-| **cursor** | `relay run --backend cursor` | Invokes Cursor CLI (requires `cursor` in PATH) |
-
-### Fully automated loop
-
-```bash
-# Run the entire workflow end-to-end with OpenAI
-export OPENAI_API_KEY=sk-...
-relay run --loop --backend openai
-
-# Or with Anthropic
-export ANTHROPIC_API_KEY=sk-ant-...
+export ANTHROPIC_API_KEY=...
 relay run --loop --backend anthropic
 ```
 
-### Configure the default backend
+A no-API-key walkthrough lives at [`docs/DEMO.md`](docs/DEMO.md).
 
-Set it in `.relay/relay.yml`:
+## What's different
+
+Every other multi-agent framework hides workflow state inside its runtime —
+LangGraph checkpoints, CrewAI processes, Claude Code session files,
+AGENTS.md as a single hand-written file. **agent-relay puts the state, the
+artifacts, and the compiled lessons in your git repo as markdown.**
+
+| | agent-relay | LangGraph / CrewAI / AutoGen | Claude Code subagents | AGENTS.md | agentic-stack |
+|---|---|---|---|---|---|
+| Workflow defined as | YAML | Python code | Markdown agents | One markdown file | SOUL.md configs |
+| State lives in | `.relay/` (git) | Runtime / DB | Session store | n/a | `.agent/memory/` |
+| Artifacts visible in PRs | **Yes** | No | No | n/a | Partial |
+| Role-typed lessons compiled from past runs | **Yes** | No | No | No (one global file) | Memory layers, not workflow-typed |
+| Tool-agnostic (Claude Code, Cursor, Codex, etc.) | **Yes** | Locked to its runtime | Claude Code only | Multi-tool but no workflow primitive | Multi-harness adapter |
+| Human-edits-the-knowledge | **Yes** (LESSONS.md is markdown) | Indirect | Indirect | Yes | Via graduate / reject CLI |
+
+## How a run flows
+
+The state machine is a YAML file. Here is `bug-rca-fix` — the 5-stage flow
+that produced the captured run above:
+
+```mermaid
+stateDiagram-v2
+    [*] --> reproduce
+    reproduce --> hypothesize: rca_reproducer<br/>writes repro.md
+    hypothesize --> fix_plan: rca_hypothesizer<br/>writes hypothesis.md
+    fix_plan --> plan_review: planner<br/>writes plan.md<br/>(reads LESSONS.md)
+    plan_review --> implement: reviewer APPROVE
+    plan_review --> plan_changes: reviewer REQUEST_CHANGES
+    plan_changes --> plan_review: planner revises
+    implement --> verify: implementer<br/>writes build_log.md
+    verify --> [*]: auditor APPROVE
+    verify --> implement: auditor REQUEST_CHANGES
+```
+
+Every transition writes a markdown artifact that lives in your repo. When
+the workflow reaches `[*]` (done), the run is snapshotted to
+`.relay/history/<run-id>/` for `relay distill` to read.
+
+## Templates (v0.2)
+
+| Template | What it's for |
+|---|---|
+| [`bug-rca-fix`](src/relay/templates/bug_rca_fix/example) | 5-stage bug fix: reproduce → hypothesise → plan → review → implement → verify. Highest signal for the lessons loop because reviewer rejections and auditor catches are exactly what compounds. |
+| [`rfc-then-implement`](src/relay/templates/rfc_then_implement/example) | Design-then-build: RFC → review → implement → audit. Useful for changes that need explicit alternatives + rollback before code is written. |
+| [`plan-review-implement-audit`](src/relay/templates/plan_review_impl_audit/example) | The classic 4-role loop. Generic enough for most non-trivial features. |
+
+Each template ships with a worked example — actual artifacts from a real run
+plus the `LESSONS.md` that `relay distill` produced. **Read the example
+before customising.**
+
+## CLI
+
+| Command | What it does |
+|---|---|
+| `relay init [--template NAME]` | Create a new workflow from a built-in template, or a minimal custom one |
+| `relay status` | Print the current stage, active role, iteration counters |
+| `relay next` | Print the prompt for the active role (with lessons auto-loaded if enabled) |
+| `relay advance [--verdict approve\|reject]` | Advance the state machine after the role finishes |
+| `relay run [--loop] [--backend NAME]` | Drive the workflow with a backend (manual / openai / anthropic / cursor) |
+| `relay distill [--llm]` | Compile typed lessons from `.relay/history/` into `LESSONS.md` + `lessons.json` |
+| `relay export claude-code` | Generate `.claude/agents/*.md` + `.claude/commands/relay-*.md` |
+| `relay export cursor` | Generate `.cursor/rules/*.mdc` + prompts |
+| `relay validate` | Check `workflow.yml` for errors |
+| `relay reset [--clean]` | Reset to the initial stage (optionally wipe artifacts) |
+| `relay dash` | Launch the TUI dashboard |
+
+## Configuration
+
+`.relay/relay.yml`:
 
 ```yaml
 default_workflow: default
-backend: openai
+backend: manual                # manual | openai | anthropic | cursor
+max_artifact_chars: 50000
+
+history:
+  enabled: true                # snapshot completed runs to .relay/history/
+
+lessons:
+  max_per_role: 10             # cap injected lessons per planner prompt
+
+# Optional: backend config
 backend_config:
-  model: gpt-4o-mini
+  model: claude-sonnet-4-5
   temperature: 0.2
-  max_tokens: 16384
 ```
 
-### Install backend dependencies
+Per-role opt-in for lessons injection (`roles/planner.yml`):
 
-```bash
-pip install agent-relay[openai]      # For OpenAI backend
-pip install agent-relay[anthropic]   # For Anthropic backend
+```yaml
+name: planner
+system_prompt: |
+  ...
+inject_lessons: true            # default false
 ```
 
----
+The shipped `bug-rca-fix`, `rfc-then-implement`, and
+`plan-review-implement-audit` templates set this on planner / architect
+roles. Other roles default to off — your choice when authoring custom
+workflows.
 
-## How It Works (Under the Hood)
-
-1. **Protocol layer**: Pydantic v2 models validate `workflow.yml` and `roles/*.yml` with clear error messages
-2. **State machine**: Tracks the current stage, resolves transitions (linear or branching via verdict extraction)
-3. **Verdict extraction**: Regex parses agent output for `## Verdict: APPROVE` patterns
-4. **Orchestrator** (optional): LLM-powered layer that holds intent, enriches prompts, evaluates outputs, and course-corrects
-5. **Backends**: Pluggable agent invocation — manual, OpenAI, Anthropic, Cursor CLI
-6. **TUI**: Textual-based dashboard shows live workflow state
-
----
-
-## Development
+## Testing
 
 ```bash
 git clone https://github.com/srijansk/agent-relay.git
 cd agent-relay
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,openai,anthropic]"
 pytest
 ```
 
+165 tests across unit / integration / e2e. CI is fully deterministic: the
+heuristic distillation does no network I/O, and the LLM-backed distillation
+is unit-tested with an injected fake `llm` callable so no real API calls
+are made during `pytest`. To exercise live LLM distill, set
+`OPENAI_API_KEY` or `ANTHROPIC_API_KEY` and run `relay distill --llm`
+against a populated `.relay/history/`.
+
+## Status
+
+- **v0.2.0** — persisted history, lessons compiler (heuristic + LLM), planner
+  auto-load, two new templates (`bug-rca-fix`, `rfc-then-implement`),
+  Claude Code exporter, captured compounding-effect demo.
+- **v0.1.0** — file-based protocol, state machine, manual / OpenAI / Anthropic
+  / Cursor backends, intelligent orchestrator.
+
+See [CHANGELOG.md](CHANGELOG.md) and
+[`docs/specs/2026-04-28-v0.2-design.md`](docs/specs/2026-04-28-v0.2-design.md)
+for the design behind v0.2.
+
 ## Contributing
 
-Contributions welcome. Please open an issue first to discuss what you'd like to change.
-
-- Follow the existing code style (ruff for linting)
-- Add tests for new functionality
-- Ensure all tests pass before submitting a PR
-
----
+Open an issue to discuss what you'd like to change. PRs welcome — the same
+`bug-rca-fix` and `plan-review-implement-audit` templates that ship in this
+repo are how the maintainers ship features here.
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).

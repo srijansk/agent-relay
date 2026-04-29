@@ -1,0 +1,56 @@
+name: "rfc-then-implement"
+version: 1
+
+roles:
+  architect:
+    description: "Drafts and revises the RFC"
+    writes: [rfc.md]
+    reads: [context.md, rfc_review.md]
+    rules: roles/architect.yml
+
+  reviewer:
+    description: "Reviews the RFC against constraints and prior art"
+    writes: [rfc_review.md]
+    reads: [context.md, rfc.md]
+    rules: roles/reviewer.yml
+
+  implementer:
+    description: "Implements the approved RFC"
+    writes: [build_log.md]
+    reads: [context.md, rfc.md, audit.md]
+    rules: roles/implementer.yml
+
+  auditor:
+    description: "Audits implementation against the approved RFC"
+    writes: [audit.md]
+    reads: [context.md, rfc.md, build_log.md]
+    rules: roles/auditor.yml
+
+stages:
+  rfc_draft:
+    agent: architect
+    next: rfc_review
+  rfc_review:
+    agent: reviewer
+    next:
+      approve: implement
+      reject: rfc_changes
+  rfc_changes:
+    agent: architect
+    next: rfc_review
+  implement:
+    agent: implementer
+    next: audit
+  audit:
+    agent: auditor
+    next:
+      approve: done
+      reject: implement
+  done:
+    terminal: true
+
+initial_stage: rfc_draft
+
+limits:
+  max_rfc_iterations: 5
+  max_implement_iterations: 3

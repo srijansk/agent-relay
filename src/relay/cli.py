@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +13,20 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from relay.history import (
+    is_history_enabled,
+    list_runs,
+    make_run_id,
+    snapshot_run,
+)
+from relay.lessons import (
+    _LLM_SYSTEM_PROMPT,
+    call_llm_for_distill,
+    compile_lessons_json,
+    compile_lessons_md,
+    distill_with_llm,
+    extract_lessons_from_history,
+)
 from relay.protocol.artifacts import ensure_artifact_dir, read_artifacts
 from relay.protocol.roles import RoleSpec
 from relay.protocol.state import StateDocument, StateMachine, extract_verdict
@@ -91,7 +104,6 @@ def _create_backend(name: str, config: dict) -> "Backend":
         name: Backend name (manual, openai, anthropic, cursor)
         config: relay.yml config dict (may contain backend-specific settings)
     """
-    from relay.backends.base import Backend
 
     backend_config = config.get("backend_config", {})
 
@@ -240,7 +252,7 @@ def init(
         relay_yml.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
 
     console.print(f"[green]Workflow '{wf_name}' initialized at {wf_dir}[/green]")
-    console.print(f"[dim]Next: run 'relay status' to see the current state[/dim]")
+    console.print("[dim]Next: run 'relay status' to see the current state[/dim]")
 
 
 @app.command()
@@ -321,11 +333,19 @@ def next(
     # Load config for max_artifact_chars
     relay_yml = relay_dir / "relay.yml"
     max_chars = 50000
+    max_lessons = 10
     if relay_yml.exists():
         config = yaml.safe_load(relay_yml.read_text()) or {}
         max_chars = config.get("max_artifact_chars", 50000)
+        lessons_cfg = config.get("lessons") or {}
+        max_lessons = lessons_cfg.get("max_per_role", 10)
 
-    prompt = compose_prompt(wf, state, role, artifact_dir, max_chars)
+    lessons_path = relay_dir / "lessons.json"
+    prompt = compose_prompt(
+        wf, state, role, artifact_dir, max_chars,
+        lessons_path=lessons_path,
+        max_lessons=max_lessons,
+    )
 
     # Print with syntax highlighting
     console.print()
@@ -338,8 +358,8 @@ def next(
     ))
     console.print()
     console.print(
-        f"[dim]After the agent finishes, run 'relay advance' "
-        f"to move to the next stage.[/dim]"
+        "[dim]After the agent finishes, run 'relay advance' "
+        "to move to the next stage.[/dim]"
     )
 
 
@@ -401,9 +421,24 @@ def advance(
 
     console.print(f"[green]Advanced: {role_name} → {target}[/green]")
 
-    # Show next step
+    # Show next step + snapshot if terminal
     if wf.stages[target].terminal:
         console.print("[bold green]Workflow complete![/bold green]")
+        relay_yml = relay_dir / "relay.yml"
+        config: dict = {}
+        if relay_yml.exists():
+            config = yaml.safe_load(relay_yml.read_text()) or {}
+        if is_history_enabled(config):
+            run_slug = state.metadata.get("run_slug") if state.metadata else None
+            run_id = make_run_id(run_slug or wf.name)
+            snapshot_path = snapshot_run(
+                relay_dir=relay_dir,
+                workflow_dir=wf_dir,
+                workflow=wf,
+                state=state,
+                run_id=run_id,
+            )
+            console.print(f"[dim]Snapshotted run to {snapshot_path}[/dim]")
     else:
         next_role = wf.stages[target].agent
         console.print(f"[dim]Next agent: {next_role}. Run 'relay next' to see the prompt.[/dim]")
@@ -428,10 +463,14 @@ def run(
     # Load config
     relay_yml = relay_dir / "relay.yml"
     max_chars = 50000
+    max_lessons = 10
     config: dict = {}
     if relay_yml.exists():
         config = yaml.safe_load(relay_yml.read_text()) or {}
         max_chars = config.get("max_artifact_chars", 50000)
+        lessons_cfg = config.get("lessons") or {}
+        max_lessons = lessons_cfg.get("max_per_role", 10)
+    lessons_path = relay_dir / "lessons.json"
 
     # Select backend — CLI flag > relay.yml config > default (manual)
     effective_backend = backend_name or config.get("backend", "manual")
@@ -511,8 +550,12 @@ def run(
                 console.print(f"[red]Orchestrator pre-step failed: {e}[/red]")
                 console.print("[yellow]Continuing without orchestrator enrichment.[/yellow]")
 
-        # Compose prompt (with orchestrator enrichment if available)
-        prompt = compose_prompt(wf, state, role, artifact_dir, max_chars, orchestrator_enrichment)
+        # Compose prompt (with orchestrator enrichment + lessons if available)
+        prompt = compose_prompt(
+            wf, state, role, artifact_dir, max_chars, orchestrator_enrichment,
+            lessons_path=lessons_path,
+            max_lessons=max_lessons,
+        )
 
         # Build run context
         from relay.backends.base import RunContext
@@ -589,6 +632,21 @@ def run(
         machine.advance(target, role_name)
         state.save(wf_dir / "state.yml")
         console.print(f"[green]Advanced: {role_name} → {target}[/green]")
+
+        # Snapshot to history when we land on a terminal stage.
+        if wf.stages[target].terminal and is_history_enabled(config):
+            run_slug = state.metadata.get("run_slug") if state.metadata else None
+            run_id = make_run_id(run_slug or wf.name)
+            snapshot_path = snapshot_run(
+                relay_dir=relay_dir,
+                workflow_dir=wf_dir,
+                workflow=wf,
+                state=state,
+                run_id=run_id,
+            )
+            console.print(
+                f"[dim]Snapshotted run to {snapshot_path.relative_to(Path.cwd()) if snapshot_path.is_relative_to(Path.cwd()) else snapshot_path}[/dim]"
+            )
 
         return not wf.stages[target].terminal
 
@@ -675,7 +733,7 @@ def dash(
 
 @app.command()
 def export(
-    format: str = typer.Argument(..., help="Export format (currently: cursor)"),
+    format: str = typer.Argument(..., help="Export format: cursor, claude-code"),
     workflow: Optional[str] = typer.Option(None, "--workflow", "-w", help="Workflow name"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output directory"),
 ) -> None:
@@ -689,12 +747,104 @@ def export(
 
     output_dir = Path(output) if output else Path.cwd()
 
-    if format == "cursor":
+    fmt = format.lower().replace("_", "-")
+    if fmt == "cursor":
         from relay.exporters.cursor import export_to_cursor
         created = export_to_cursor(wf_dir, output_dir)
         console.print(f"[green]Exported to Cursor format ({len(created)} files):[/green]")
         for f in created:
             console.print(f"  {f.relative_to(output_dir)}")
+    elif fmt in {"claude-code", "claude", "claudecode"}:
+        from relay.exporters.claude_code import export_to_claude_code
+        created = export_to_claude_code(wf_dir, output_dir)
+        console.print(
+            f"[green]Exported to Claude Code format ({len(created)} files):[/green]"
+        )
+        for f in created:
+            console.print(f"  {f.relative_to(output_dir)}")
     else:
-        console.print(f"[red]Unknown format: {format}. Available: cursor[/red]")
+        console.print(
+            f"[red]Unknown format: {format}. Available: cursor, claude-code[/red]"
+        )
         raise typer.Exit(1)
+
+
+@app.command()
+def distill(
+    workflow: Optional[str] = typer.Option(None, "--workflow", "-w", help="Workflow name (unused; distill scans all history)"),
+    use_llm: bool = typer.Option(False, "--llm", help="Use LLM-backed distillation (groups bullets, rewrites in second-person)"),
+    provider: Optional[str] = typer.Option(None, "--provider", help="Override provider for --llm (openai|anthropic)"),
+    model: Optional[str] = typer.Option(None, "--model", help="Override model for --llm"),
+) -> None:
+    """Compile typed lessons from .relay/history/ into LESSONS.md + lessons.json."""
+    relay_dir = _find_relay_dir()
+    if not relay_dir.exists():
+        console.print(
+            "[red]No .relay/ directory found. Run 'relay init' first.[/red]"
+        )
+        raise typer.Exit(1)
+
+    runs = list_runs(relay_dir)
+    if not runs:
+        console.print(
+            "[yellow]No runs in .relay/history/ yet. "
+            "Run a workflow end-to-end first; the snapshot lands automatically.[/yellow]"
+        )
+        lessons: list = []
+    elif use_llm:
+        config: dict = {}
+        relay_yml = relay_dir / "relay.yml"
+        if relay_yml.exists():
+            config = yaml.safe_load(relay_yml.read_text()) or {}
+        backend_config = config.get("backend_config", {}) or {}
+
+        # Resolve provider + model: --provider > config.backend > default
+        effective_provider = (provider or config.get("backend") or "openai").lower()
+        if effective_provider not in {"openai", "anthropic"}:
+            console.print(
+                f"[red]--llm requires backend openai or anthropic; got '{effective_provider}'. "
+                "Set 'backend' in relay.yml or pass --provider.[/red]"
+            )
+            raise typer.Exit(1)
+        default_model = "gpt-4o" if effective_provider == "openai" else "claude-sonnet-4-20250514"
+        effective_model = model or backend_config.get("model") or default_model
+        api_key = backend_config.get("api_key")
+
+        console.print(
+            f"[cyan]Distilling with LLM ({effective_provider} / {effective_model})...[/cyan]"
+        )
+
+        def _llm(system_prompt: str, user_prompt: str) -> str:
+            return call_llm_for_distill(
+                provider=effective_provider,
+                model=effective_model,
+                api_key=api_key,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+
+        lessons = distill_with_llm(relay_dir / "history", llm=_llm)
+        if not lessons:
+            console.print(
+                "[yellow]LLM distillation returned nothing; falling back to heuristic.[/yellow]"
+            )
+            lessons = extract_lessons_from_history(relay_dir / "history")
+    else:
+        lessons = extract_lessons_from_history(relay_dir / "history")
+
+    md = compile_lessons_md(lessons)
+    js = compile_lessons_json(lessons)
+
+    md_path = relay_dir / "LESSONS.md"
+    json_path = relay_dir / "lessons.json"
+    md_path.write_text(md, encoding="utf-8")
+    json_path.write_text(js, encoding="utf-8")
+
+    sources = {lesson.source for lesson in lessons} if lessons else set()
+    source_label = "/".join(sorted(sources)) if sources else "heuristic"
+    console.print(
+        f"[green]Distilled {len(lessons)} lesson(s) from {len(runs)} run(s) "
+        f"({source_label}).[/green]"
+    )
+    console.print(f"  {md_path}")
+    console.print(f"  {json_path}")

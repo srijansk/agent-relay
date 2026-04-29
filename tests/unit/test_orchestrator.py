@@ -1,6 +1,5 @@
 """Tests for the Orchestrator — context log, parsing, enrichment, persistence."""
 
-from pathlib import Path
 
 import pytest
 import yaml
@@ -8,8 +7,6 @@ import yaml
 from relay.orchestrator import (
     Orchestrator,
     OrchestratorNote,
-    PostStepResult,
-    PreStepResult,
 )
 
 
