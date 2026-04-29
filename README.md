@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-157%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-165%20passing-brightgreen.svg)](#testing)
 
 > **Multi-agent workflows that learn from their own past runs.**
 > Plans, reviews, build logs, and audits land in your repo as committed
@@ -29,7 +29,8 @@ relay advance
 
 # When the workflow completes, it snapshots to .relay/history/<run-id>/.
 # Compile lessons from accumulated history at any time:
-relay distill                    # writes .relay/LESSONS.md + lessons.json
+relay distill                    # heuristic: parse rejection bullets, role-typed
+relay distill --llm              # LLM-backed: groups bullets, rewrites in second-person
 
 # Run the next workflow on a similar bug — the planner's prompt now includes
 # every lesson the reviewer flagged in past runs, scoped to files you're touching.
@@ -41,6 +42,10 @@ You can also let agent-relay drive the whole loop end-to-end with a backend:
 export ANTHROPIC_API_KEY=...
 relay run --loop --backend anthropic
 ```
+
+**See it run:** [`docs/DEMO.md`](docs/DEMO.md) walks the full mechanical loop
+(no API key) and links a one-shot script that captures the empirical
+compounding effect on your own key.
 
 ---
 
@@ -201,13 +206,16 @@ workflows.
 git clone https://github.com/srijansk/agent-relay.git
 cd agent-relay
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,openai,anthropic]"
 pytest
 ```
 
-157 tests across unit / integration / e2e. The lessons compiler runs in a
-deterministic heuristic mode in CI (no API calls). LLM-backed distillation
-is opt-in via `relay distill --llm`.
+165 tests across unit / integration / e2e. CI is fully deterministic: the
+heuristic distillation does no network I/O, and the LLM-backed distillation
+is unit-tested with an injected fake `llm` callable so no real API calls
+are made during `pytest`. To exercise live LLM distill, set
+`OPENAI_API_KEY` or `ANTHROPIC_API_KEY` and run
+`relay distill --llm` against a populated `.relay/history/`.
 
 ---
 
