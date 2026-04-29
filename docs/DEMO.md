@@ -139,6 +139,12 @@ from the start* — is what you'll want to confirm yourself. The strength of
 the effect depends on your model. Sonnet 4.6 and gpt-4o both show it
 clearly; smaller models will benefit but less reliably.
 
+**A captured run is committed in this repo.** See
+[`docs/demo-output/`](demo-output/) for the actual artifacts produced
+when the script was run against `gpt-4o`. Run 1 (no lessons) — REQUEST_CHANGES.
+Run 2 (5 LLM-distilled lessons in prompt) — APPROVE on first pass, with
+the reviewer's approval message citing each lesson by name.
+
 ---
 
 ## 4. What the captured examples in this repo show

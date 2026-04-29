@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "generated_at": "2026-04-29T14:45:43.200825+00:00",
+  "lesson_count": 5,
+  "lessons": [
+    {
+      "id": "8186662217fa",
+      "role": "planner",
+      "claim": "Explicitly include steps to review and test adjacent code paths for similar issues when addressing a bug.",
+      "severity": "warn",
+      "evidence_run_id": "20260429-1445-bug-rca-fix-tz",
+      "evidence_excerpt": "(20260429-1445-bug-rca-fix-tz) The hypothesis mentions the need to inspect other functions in `src/api/orders.py` and potentially `src/utils/datetime.py` for similar timezone handling issues. The plan should explicitly include steps to review and test these adjacent code paths to",
+      "observed_at": "2026-04-29T14:45:00Z",
+      "tags": [
+        "src/api/orders.py",
+        "src/utils/datetime.py"
+      ],
+      "source": "llm"
+    },
+    {
+      "id": "8fa94bbc99db",
+      "role": "planner",
+      "claim": "Include a specific failing test in the plan to demonstrate the bug before applying any fixes.",
+      "severity": "warn",
+      "evidence_run_id": "20260429-1445-bug-rca-fix-tz",
+      "evidence_excerpt": "(20260429-1445-bug-rca-fix-tz) The hypothesis mentions the need to inspect other functions in `src/api/orders.py` and potentially `src/utils/datetime.py` for similar timezone handling issues. The plan should explicitly include steps to review and test these adjacent code paths to",
+      "observed_at": "2026-04-29T14:45:00Z",
+      "tags": [],
+      "source": "llm"
+    },
+    {
+      "id": "f08de1fd2e90",
+      "role": "planner",
+      "claim": "Specify the commit hash or provide a detailed rollback procedure in the rollback strategy for clarity and ease of execution.",
+      "severity": "warn",
+      "evidence_run_id": "20260429-1445-bug-rca-fix-tz",
+      "evidence_excerpt": "(20260429-1445-bug-rca-fix-tz) The hypothesis mentions the need to inspect other functions in `src/api/orders.py` and potentially `src/utils/datetime.py` for similar timezone handling issues. The plan should explicitly include steps to review and test these adjacent code paths to",
+      "observed_at": "2026-04-29T14:45:00Z",
+      "tags": [],
+      "source": "llm"
+    },
+    {
+      "id": "0032e0610340",
+      "role": "planner",
+      "claim": "Set up the test environment to simulate different timezones to validate the robustness of timezone handling logic.",
+      "severity": "info",
+      "evidence_run_id": "20260429-1445-bug-rca-fix-tz",
+      "evidence_excerpt": "(20260429-1445-bug-rca-fix-tz) The hypothesis mentions the need to inspect other functions in `src/api/orders.py` and potentially `src/utils/datetime.py` for similar timezone handling issues. The plan should explicitly include steps to review and test these adjacent code paths to",
+      "observed_at": "2026-04-29T14:45:00Z",
+      "tags": [],
+      "source": "llm"
+    },
+    {
+      "id": "47c6a20635d5",
+      "role": "planner",
+      "claim": "Consider using a more modern library like `dateutil` or Python's built-in `datetime` module with timezone support for handling timezone conversions.",
+      "severity": "info",
+      "evidence_run_id": "20260429-1445-bug-rca-fix-tz",
+      "evidence_excerpt": "(20260429-1445-bug-rca-fix-tz) The hypothesis mentions the need to inspect other functions in `src/api/orders.py` and potentially `src/utils/datetime.py` for similar timezone handling issues. The plan should explicitly include steps to review and test these adjacent code paths to",
+      "observed_at": "2026-04-29T14:45:00Z",
+      "tags": [],
+      "source": "llm"
+    }
+  ]
+}

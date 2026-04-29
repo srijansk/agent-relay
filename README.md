@@ -44,8 +44,12 @@ relay run --loop --backend anthropic
 ```
 
 **See it run:** [`docs/DEMO.md`](docs/DEMO.md) walks the full mechanical loop
-(no API key) and links a one-shot script that captures the empirical
-compounding effect on your own key.
+(no API key). For real-model evidence,
+[`docs/demo-output/`](docs/demo-output/) contains a captured run where Run 2
+(with 5 LLM-distilled lessons in the planner's prompt) was approved on first
+pass after Run 1 (no lessons) needed multiple iterations — the reviewer's
+APPROVE message cites each lesson by name. Reproduce on your own key with
+[`scripts/capture-compounding-demo.sh`](scripts/capture-compounding-demo.sh).
 
 ---
 
