@@ -14,9 +14,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `run.yml` summary.
 - **`relay distill` command.** Compiles role-typed lessons from
   `.relay/history/` into `.relay/LESSONS.md` (human) and
-  `.relay/lessons.json` (machine). Heuristic mode is deterministic and
-  CI-friendly; `--llm` mode is opt-in (placeholder in 0.2; falls back to
-  heuristic).
+  `.relay/lessons.json` (machine). Two modes:
+  - Heuristic (default): regex over rejection sections (`## Required
+    Changes`, `## Catches`, `## MUST_FIX`, ...). Deterministic,
+    CI-friendly.
+  - `--llm` (opt-in): groups bullets that describe the same recurring
+    concern, rewrites them as forward-looking second-person lessons,
+    drops run-specific noise, and preserves provenance. Per-role
+    fallback to heuristic on backend errors. CLI accepts `--provider
+    openai|anthropic` and `--model`.
+- **Demo + capture script.** `docs/DEMO.md` walks the full mechanical
+  loop (no API key) plus how to inspect the prompt-injection mechanism.
+  `scripts/capture-compounding-demo.sh` runs `bug-rca-fix` twice on
+  related bugs end-to-end against your configured backend so you can
+  diff Run-1's plan against Run-2's plan and see the empirical
+  compounding effect.
 - **Lessons auto-load into planner prompts.** Roles can opt in via
   `inject_lessons: true` in `roles/<name>.yml`. The injected section
   separates "Highly relevant" (lessons whose tags overlap the role's

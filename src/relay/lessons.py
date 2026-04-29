@@ -4,12 +4,20 @@ The lessons compiler turns the markdown produced by past workflow runs into
 typed, in-repo knowledge that the next planner can read. Two modes:
 
   * Heuristic (default, deterministic) — parses known section headers
-    (Required Changes, Concerns, Catches, Suggestions) and extracts bullet
-    points as lesson candidates. No LLM. CI-friendly.
+    (Required Changes, Concerns, Catches, MUST_FIX, Findings, ...) and
+    extracts bullet points as lesson candidates. No LLM. CI-friendly.
+    Each rejection bullet becomes one Lesson, hashed for idempotency.
 
-  * LLM (--llm, opt-in) — calls the configured backend with a structured
-    prompt to produce higher-quality typed lessons from the same artifacts.
-    Falls back to heuristic if no backend or call fails.
+  * LLM (``--llm``, opt-in) — sends the same harvested rejection bullets
+    to the configured backend with a structured prompt that asks the
+    model to:
+      - group bullets that describe the same recurring concern,
+      - rewrite each group as a single forward-looking second-person
+        lesson ("Always include a failing test before fixing a bug"),
+      - drop run-specific noise that won't recur,
+      - preserve provenance (which run-ids contributed).
+    Falls back to heuristic if the backend is unavailable or the response
+    is malformed — the heuristic is the floor.
 
 Output is two artifacts at ``.relay/``:
 
@@ -21,11 +29,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -446,3 +455,211 @@ def _format_lesson_bullet(lesson: Lesson) -> str:
         f"- [{lesson.severity}] {lesson.claim}"
         f" _(run {lesson.evidence_run_id})_"
     )
+
+
+# ---------------------------------------------------------------------------
+# LLM-backed distillation
+# ---------------------------------------------------------------------------
+
+# Pluggable callable for the actual LLM round-trip. Tests inject a fake; the
+# CLI injects ``call_llm_for_distill`` (below) which speaks to OpenAI or
+# Anthropic. The signature is intentionally narrow so a mock is one line.
+LlmCaller = Any  # Callable[[str, str], str] — system prompt + user prompt → response text
+
+
+_LLM_SYSTEM_PROMPT = """You are a Lessons Compiler for a multi-agent code-workflow system.
+
+Your job: given critique bullets from past workflow runs (one role's audience),
+produce a small set of forward-looking, second-person lessons that the next
+agent of that role should read before starting its task.
+
+Rules:
+1. GROUP bullets that describe the same recurring concern. One lesson per group.
+2. WRITE each lesson in second-person, forward-looking imperative voice:
+     YES: "Always include a failing test before fixing a bug."
+     YES: "Don't disable an existing test to make the suite pass; fix the root cause."
+     NO:  "Step 3 doesn't specify the migration order in run 20260428-0930."
+3. SEVERITY:
+     - "error" for hard mistakes (disabled tests, ignored constraints, security shortcuts)
+     - "warn"  for recurring planning/scope gaps (missing rollback, missing failing test)
+     - "info"  for polish-level concerns (naming, comments, doc nits)
+4. DROP bullets that are run-specific and unlikely to recur on a different task.
+5. PRESERVE provenance: include every run-id whose bullet contributed.
+6. Infer file/path TAGS from bullet text where possible.
+
+Return ONLY a JSON array of lesson objects, no prose. Schema:
+[
+  {
+    "claim": "<forward-looking second-person sentence>",
+    "severity": "error" | "warn" | "info",
+    "source_runs": ["<run-id>", "..."],
+    "tags": ["<file-or-module>", "..."]
+  }
+]
+"""
+
+
+def _bullets_to_llm_user_prompt(role: str, bullets: list[Lesson]) -> str:
+    """Render the heuristic-extracted bullets as the LLM input."""
+    lines = [
+        f"# Audience role: {role}",
+        f"# {len(bullets)} bullets from past runs:",
+        "",
+    ]
+    for lesson in bullets:
+        run_id = lesson.evidence_run_id
+        text = lesson.evidence_excerpt or lesson.claim
+        lines.append(f"- (run {run_id}) [{lesson.severity}] {text}")
+    return "\n".join(lines)
+
+
+def _parse_llm_response(text: str) -> list[dict[str, Any]]:
+    """Pull the JSON array out of an LLM response.
+
+    The model may wrap the array in markdown fences or prose. Be lenient.
+    """
+    # Strip markdown fences if present.
+    fence_match = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
+    candidate = fence_match.group(1) if fence_match else text
+    # Find the first '[' through the last ']'.
+    first = candidate.find("[")
+    last = candidate.rfind("]")
+    if first < 0 or last <= first:
+        raise ValueError("No JSON array found in LLM response")
+    payload = candidate[first : last + 1]
+    parsed = json.loads(payload)
+    if not isinstance(parsed, list):
+        raise ValueError("LLM response was not a JSON array")
+    return parsed
+
+
+def call_llm_for_distill(
+    *,
+    provider: str,
+    model: str,
+    api_key: str | None,
+    system_prompt: str,
+    user_prompt: str,
+    timeout_s: float = 60.0,
+) -> str:
+    """Call the configured LLM provider with a system + user prompt.
+
+    Synchronous (the distill command is one-shot, not a hot loop).
+    Returns the model's response text. Raises on transport / API errors.
+    """
+    if provider == "openai":
+        from openai import OpenAI  # imported lazily so heuristic mode has no openai dep
+
+        client = OpenAI(api_key=api_key or os.environ.get("OPENAI_API_KEY"), timeout=timeout_s)
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.2,
+            max_tokens=4000,
+        )
+        return resp.choices[0].message.content or ""
+
+    if provider == "anthropic":
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"), timeout=timeout_s)
+        resp = client.messages.create(
+            model=model,
+            max_tokens=4000,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        # Anthropic returns a list of content blocks; concatenate text-typed ones.
+        chunks: list[str] = []
+        for block in resp.content:
+            text = getattr(block, "text", None)
+            if text:
+                chunks.append(text)
+        return "".join(chunks)
+
+    raise ValueError(f"Unsupported provider for distill: {provider}")
+
+
+def distill_with_llm(
+    history_dir: Path,
+    *,
+    llm: LlmCaller,
+) -> list[Lesson]:
+    """Distill lessons by sending heuristic-extracted bullets to an LLM.
+
+    Strategy:
+      1. Walk history with the heuristic extractor — gives raw bullets, role
+         attribution, and run-id provenance.
+      2. Group by audience role.
+      3. For each role, ask the LLM to compress the bullets into forward-
+         looking second-person lessons (groups of related bullets become
+         one lesson; provenance is preserved as ``source_runs``).
+      4. Convert the LLM's structured output into ``Lesson`` records, marked
+         ``source="llm"``.
+      5. If the LLM call fails for a role, fall back to that role's heuristic
+         bullets — the heuristic is the floor. Other roles' LLM output is
+         unaffected.
+
+    ``llm`` is a callable ``(system_prompt, user_prompt) -> response_text`` so
+    tests can inject a deterministic mock. The CLI passes a closure over
+    ``call_llm_for_distill``.
+    """
+    raw_lessons = extract_lessons_from_history(history_dir)
+    if not raw_lessons:
+        return []
+
+    by_role: dict[str, list[Lesson]] = {}
+    for lesson in raw_lessons:
+        by_role.setdefault(lesson.role, []).append(lesson)
+
+    distilled: list[Lesson] = []
+    severity_rank = {"error": 0, "warn": 1, "info": 2}
+
+    for role in sorted(by_role.keys()):
+        bullets = by_role[role]
+        user_prompt = _bullets_to_llm_user_prompt(role, bullets)
+        try:
+            response = llm(_LLM_SYSTEM_PROMPT, user_prompt)
+            payload = _parse_llm_response(response)
+        except Exception:  # noqa: BLE001 — fall back per-role rather than crash distill
+            distilled.extend(bullets)
+            continue
+
+        observed_at = max((lesson.observed_at for lesson in bullets), default=datetime.now(tz=timezone.utc))
+        for entry in payload:
+            claim = str(entry.get("claim", "")).strip()
+            if not claim:
+                continue
+            severity = entry.get("severity", "warn")
+            if severity not in severity_rank:
+                severity = "warn"
+            source_runs = entry.get("source_runs") or []
+            if not isinstance(source_runs, list) or not source_runs:
+                source_runs = list({lesson.evidence_run_id for lesson in bullets})
+            tags = entry.get("tags") or []
+            if not isinstance(tags, list):
+                tags = []
+            tags = [str(t) for t in tags if t]
+
+            primary_run = sorted(str(r) for r in source_runs)[0]
+            evidence = "; ".join(f"({lesson.evidence_run_id}) {lesson.claim}" for lesson in bullets[:3])[:280]
+            lesson_id = _hash_id(role, claim, ",".join(sorted(str(r) for r in source_runs)))
+            distilled.append(
+                Lesson(
+                    id=lesson_id,
+                    role=role,
+                    claim=claim,
+                    severity=severity,
+                    evidence_run_id=primary_run,
+                    evidence_excerpt=evidence,
+                    observed_at=observed_at,
+                    tags=tags,
+                    source="llm",
+                )
+            )
+
+    distilled.sort(key=lambda lesson: (lesson.role, severity_rank[lesson.severity], lesson.id))
+    return distilled

@@ -20,8 +20,11 @@ from relay.history import (
     snapshot_run,
 )
 from relay.lessons import (
+    _LLM_SYSTEM_PROMPT,
+    call_llm_for_distill,
     compile_lessons_json,
     compile_lessons_md,
+    distill_with_llm,
     extract_lessons_from_history,
 )
 from relay.protocol.artifacts import ensure_artifact_dir, read_artifacts
@@ -769,15 +772,11 @@ def export(
 @app.command()
 def distill(
     workflow: Optional[str] = typer.Option(None, "--workflow", "-w", help="Workflow name (unused; distill scans all history)"),
-    use_llm: bool = typer.Option(False, "--llm", help="Use LLM-backed distillation (requires backend)"),
+    use_llm: bool = typer.Option(False, "--llm", help="Use LLM-backed distillation (groups bullets, rewrites in second-person)"),
+    provider: Optional[str] = typer.Option(None, "--provider", help="Override provider for --llm (openai|anthropic)"),
+    model: Optional[str] = typer.Option(None, "--model", help="Override model for --llm"),
 ) -> None:
     """Compile typed lessons from .relay/history/ into LESSONS.md + lessons.json."""
-    if use_llm:
-        console.print(
-            "[yellow]LLM-backed distill is opt-in for v0.2 and not yet implemented; "
-            "falling back to heuristic mode.[/yellow]"
-        )
-
     relay_dir = _find_relay_dir()
     if not relay_dir.exists():
         console.print(
@@ -791,8 +790,45 @@ def distill(
             "[yellow]No runs in .relay/history/ yet. "
             "Run a workflow end-to-end first; the snapshot lands automatically.[/yellow]"
         )
-        # Still emit empty artefacts so downstream tooling can rely on them.
         lessons: list = []
+    elif use_llm:
+        config: dict = {}
+        relay_yml = relay_dir / "relay.yml"
+        if relay_yml.exists():
+            config = yaml.safe_load(relay_yml.read_text()) or {}
+        backend_config = config.get("backend_config", {}) or {}
+
+        # Resolve provider + model: --provider > config.backend > default
+        effective_provider = (provider or config.get("backend") or "openai").lower()
+        if effective_provider not in {"openai", "anthropic"}:
+            console.print(
+                f"[red]--llm requires backend openai or anthropic; got '{effective_provider}'. "
+                "Set 'backend' in relay.yml or pass --provider.[/red]"
+            )
+            raise typer.Exit(1)
+        default_model = "gpt-4o" if effective_provider == "openai" else "claude-sonnet-4-20250514"
+        effective_model = model or backend_config.get("model") or default_model
+        api_key = backend_config.get("api_key")
+
+        console.print(
+            f"[cyan]Distilling with LLM ({effective_provider} / {effective_model})...[/cyan]"
+        )
+
+        def _llm(system_prompt: str, user_prompt: str) -> str:
+            return call_llm_for_distill(
+                provider=effective_provider,
+                model=effective_model,
+                api_key=api_key,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+
+        lessons = distill_with_llm(relay_dir / "history", llm=_llm)
+        if not lessons:
+            console.print(
+                "[yellow]LLM distillation returned nothing; falling back to heuristic.[/yellow]"
+            )
+            lessons = extract_lessons_from_history(relay_dir / "history")
     else:
         lessons = extract_lessons_from_history(relay_dir / "history")
 
@@ -804,8 +840,11 @@ def distill(
     md_path.write_text(md, encoding="utf-8")
     json_path.write_text(js, encoding="utf-8")
 
+    sources = {lesson.source for lesson in lessons} if lessons else set()
+    source_label = "/".join(sorted(sources)) if sources else "heuristic"
     console.print(
-        f"[green]Distilled {len(lessons)} lesson(s) from {len(runs)} run(s).[/green]"
+        f"[green]Distilled {len(lessons)} lesson(s) from {len(runs)} run(s) "
+        f"({source_label}).[/green]"
     )
     console.print(f"  {md_path}")
     console.print(f"  {json_path}")
