@@ -9,11 +9,64 @@
 > artifacts. `relay distill` compiles them into role-typed lessons your
 > next planner reads — so the same task class gets cheaper every time.
 
+<!-- HERO_DEMO_START — replace with the animated demo once generated. -->
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="agent-relay running bug-rca-fix end-to-end and producing forward-looking lessons that the next run consumes" width="780">
+</p>
+<!-- HERO_DEMO_END -->
+
 ```bash
 pip install git+https://github.com/srijansk/agent-relay.git
 ```
 
----
+## How it actually compounds
+
+```mermaid
+flowchart LR
+    A["<b>Run 1</b><br/>thin context<br/>vague rollback"] --> B{Reviewer}
+    B -->|REQUEST_CHANGES| C[".relay/history/<br/>run-1/"]
+    C --> D["<b>relay distill --llm</b><br/>groups bullets<br/>rewrites in 2nd-person"]
+    D --> E["<b>LESSONS.md</b><br/>5 forward-looking lessons<br/>(failing test, named rollback,<br/>adjacent paths, ...)"]
+    E -.injected into prompt.-> F["<b>Run 2</b><br/>different bug,<br/>same task class"]
+    F --> G{Reviewer}
+    G -->|APPROVE on first pass| H[done]
+
+    style A fill:#fde8e8,stroke:#c53030
+    style F fill:#e6f7e9,stroke:#2f855a
+    style E fill:#fff8e0,stroke:#b7791f
+    style B fill:#fde8e8,stroke:#c53030
+    style G fill:#e6f7e9,stroke:#2f855a
+```
+
+The loop closes when the reviewer's rejection on Run 1 becomes a lesson the
+planner reads on Run 2. **No memory layer, no vector store** — just markdown
+your team can edit, commit, and review like any other knowledge artifact.
+
+## Captured proof
+
+This isn't a thought experiment. From the run captured in
+[`docs/demo-output/`](docs/demo-output/) against `gpt-4o`:
+
+**Run 1** (no lessons) — planner gave a vague rollback ("revert the changes
+by checking out the previous commit using its hash"), no concrete failing
+test, missed adjacent paths. **Reviewer rejected.** Hit iteration cap.
+
+`relay distill --llm` compressed the rejection into 5 forward-looking
+lessons, the substantive ones being:
+
+- "Always include a specific failing test in the plan to demonstrate the bug before applying any fixes."
+- "Always specify the exact file changes or commits that need to be undone in the rollback section."
+- "Explicitly include steps to review and test adjacent code paths for similar issues when addressing a bug."
+
+**Run 2** (different bug, same task class, lessons in the planner's prompt) —
+plan addressed all three proactively. **Reviewer APPROVED on first pass**,
+verdict cited each lesson by name:
+
+> *"The plan includes a failing test-first approach with specific tests... The rollback strategy is concrete, specifying the file and nature of the change to be reverted... considers adjacent paths that might be affected by similar issues..."*
+
+That's the receipts. See [`docs/demo-output/README.md`](docs/demo-output/README.md)
+for the full side-by-side. Reproduce on your own key with
+[`scripts/capture-compounding-demo.sh`](scripts/capture-compounding-demo.sh).
 
 ## In 30 seconds
 
@@ -21,37 +74,28 @@ pip install git+https://github.com/srijansk/agent-relay.git
 # Initialise a 5-stage bug-fix workflow (reproduce → hypothesise → plan → fix → verify)
 relay init --template bug-rca-fix
 
-# See the prompt for whichever role is active
+# See the prompt for the active role
 relay next                       # paste it into Claude Code, Cursor, Codex...
 
-# After the agent writes its artifact (plan.md / audit.md / ...), advance
+# After the agent writes its artifact, advance
 relay advance
 
 # When the workflow completes, it snapshots to .relay/history/<run-id>/.
 # Compile lessons from accumulated history at any time:
 relay distill                    # heuristic: parse rejection bullets, role-typed
-relay distill --llm              # LLM-backed: groups bullets, rewrites in second-person
+relay distill --llm              # LLM-backed: groups bullets, rewrites in 2nd-person
 
-# Run the next workflow on a similar bug — the planner's prompt now includes
-# every lesson the reviewer flagged in past runs, scoped to files you're touching.
+# The next run on a similar bug will see those lessons in the planner's prompt.
 ```
 
-You can also let agent-relay drive the whole loop end-to-end with a backend:
+Or let agent-relay drive the whole loop end-to-end with a backend:
 
 ```bash
 export ANTHROPIC_API_KEY=...
 relay run --loop --backend anthropic
 ```
 
-**See it run:** [`docs/DEMO.md`](docs/DEMO.md) walks the full mechanical loop
-(no API key). For real-model evidence,
-[`docs/demo-output/`](docs/demo-output/) contains a captured run where Run 2
-(with 5 LLM-distilled lessons in the planner's prompt) was approved on first
-pass after Run 1 (no lessons) needed multiple iterations — the reviewer's
-APPROVE message cites each lesson by name. Reproduce on your own key with
-[`scripts/capture-compounding-demo.sh`](scripts/capture-compounding-demo.sh).
-
----
+A no-API-key walkthrough lives at [`docs/DEMO.md`](docs/DEMO.md).
 
 ## What's different
 
@@ -69,30 +113,28 @@ artifacts, and the compiled lessons in your git repo as markdown.**
 | Tool-agnostic (Claude Code, Cursor, Codex, etc.) | **Yes** | Locked to its runtime | Claude Code only | Multi-tool but no workflow primitive | Multi-harness adapter |
 | Human-edits-the-knowledge | **Yes** (LESSONS.md is markdown) | Indirect | Indirect | Yes | Via graduate / reject CLI |
 
-## Why bother committing the workflow to git?
+## How a run flows
 
-Two reasons. The first one is obvious; the second is the reason for v0.2.
+The state machine is a YAML file. Here is `bug-rca-fix` — the 5-stage flow
+that produced the captured run above:
 
-1. **Audit trail.** Every PR carries the plan the agents wrote, the
-   reviewer's verdict, the implementer's build log, the auditor's catches.
-   A human reviewer can argue with each agent at the artifact level instead
-   of just inspecting the final code.
+```mermaid
+stateDiagram-v2
+    [*] --> reproduce
+    reproduce --> hypothesize: rca_reproducer<br/>writes repro.md
+    hypothesize --> fix_plan: rca_hypothesizer<br/>writes hypothesis.md
+    fix_plan --> plan_review: planner<br/>writes plan.md<br/>(reads LESSONS.md)
+    plan_review --> implement: reviewer APPROVE
+    plan_review --> plan_changes: reviewer REQUEST_CHANGES
+    plan_changes --> plan_review: planner revises
+    implement --> verify: implementer<br/>writes build_log.md
+    verify --> [*]: auditor APPROVE
+    verify --> implement: auditor REQUEST_CHANGES
+```
 
-2. **Compounding improvement.** When `relay distill` runs over your
-   `.relay/history/`, it produces typed lessons:
-   - the *reviewer's* rejections become lessons FOR the planner ("don't
-     skip the rollback test next time"),
-   - the *auditor's* catches become lessons FOR the implementer ("show
-     before/after test output, don't just claim a fix worked"),
-   - their tags pick up file paths so a planner working on `state.py`
-     gets `state.py`-relevant lessons highlighted as "highly relevant"
-     in its next prompt.
-
-   The lessons are markdown in your repo. You can edit them. PR reviewers
-   can edit them. Stale lessons get pruned the way you'd prune any other
-   document. The agents read what your team writes back in.
-
----
+Every transition writes a markdown artifact that lives in your repo. When
+the workflow reaches `[*]` (done), the run is snapshotted to
+`.relay/history/<run-id>/` for `relay distill` to read.
 
 ## Templates (v0.2)
 
@@ -100,13 +142,11 @@ Two reasons. The first one is obvious; the second is the reason for v0.2.
 |---|---|
 | [`bug-rca-fix`](src/relay/templates/bug_rca_fix/example) | 5-stage bug fix: reproduce → hypothesise → plan → review → implement → verify. Highest signal for the lessons loop because reviewer rejections and auditor catches are exactly what compounds. |
 | [`rfc-then-implement`](src/relay/templates/rfc_then_implement/example) | Design-then-build: RFC → review → implement → audit. Useful for changes that need explicit alternatives + rollback before code is written. |
-| [`plan-review-implement-audit`](src/relay/templates/plan_review_impl_audit) | The classic 4-role loop. Generic enough for most non-trivial features. |
+| [`plan-review-implement-audit`](src/relay/templates/plan_review_impl_audit/example) | The classic 4-role loop. Generic enough for most non-trivial features. |
 
-Each template ships with a worked example under `example/` — actual
-artifacts from a representative run plus the `LESSONS.md` that
-`relay distill` produces from it. **Read those before customising.**
-
----
+Each template ships with a worked example — actual artifacts from a real run
+plus the `LESSONS.md` that `relay distill` produced. **Read the example
+before customising.**
 
 ## CLI
 
@@ -123,49 +163,6 @@ artifacts from a representative run plus the `LESSONS.md` that
 | `relay validate` | Check `workflow.yml` for errors |
 | `relay reset [--clean]` | Reset to the initial stage (optionally wipe artifacts) |
 | `relay dash` | Launch the TUI dashboard |
-
----
-
-## How lessons compounding actually works
-
-**Run 1.** You use `bug-rca-fix` to fix a bug in `src/app/config.py`. The
-reviewer rejects the first plan with: *"plan ignores adjacent flags
-`enable_metrics` and `enable_audit` in the same loader — fix them too."*
-The planner addresses it on the second pass; the workflow ships.
-
-When the workflow reaches `done`, agent-relay snapshots to
-`.relay/history/20260428-0930-bug-rca-fix/`. The artifacts (plan, review,
-audit, build log) are committed as part of your PR.
-
-**`relay distill`** parses the snapshot and writes:
-
-```markdown
-## Planner (1)
-- **[warn]** When fixing a config-loader bug, also cover adjacent flags
-  flagged in hypothesis.md — otherwise the next bug ships next quarter.
-  _(run 20260428-0930-bug-rca-fix — files: hypothesis.md, config.py)_
-```
-
-**Run 2.** A week later, a different bug in the same loader. You re-run
-`relay init --template bug-rca-fix`. When the planner stage activates,
-`relay next` prints a prompt that includes:
-
-```markdown
-## Lessons from past runs
-**Highly relevant** (touch files you're working with):
-- [warn] When fixing a config-loader bug, also cover adjacent flags
-  flagged in hypothesis.md — otherwise the next bug ships next quarter.
-  _(run 20260428-0930-bug-rca-fix)_
-```
-
-The planner sees the lesson before it writes the plan. Reviewer rejection
-rates on the same task class go down across runs because the planner
-inherited what the reviewer caught last time.
-
-The lessons file is markdown. If a lesson is wrong, edit it. If a lesson
-is stale, delete it. The agent reads what your team curates.
-
----
 
 ## Configuration
 
@@ -198,11 +195,9 @@ inject_lessons: true            # default false
 ```
 
 The shipped `bug-rca-fix`, `rfc-then-implement`, and
-`plan-review-implement-audit` templates all set this on planner / architect
+`plan-review-implement-audit` templates set this on planner / architect
 roles. Other roles default to off — your choice when authoring custom
 workflows.
-
----
 
 ## Testing
 
@@ -218,18 +213,16 @@ pytest
 heuristic distillation does no network I/O, and the LLM-backed distillation
 is unit-tested with an injected fake `llm` callable so no real API calls
 are made during `pytest`. To exercise live LLM distill, set
-`OPENAI_API_KEY` or `ANTHROPIC_API_KEY` and run
-`relay distill --llm` against a populated `.relay/history/`.
-
----
+`OPENAI_API_KEY` or `ANTHROPIC_API_KEY` and run `relay distill --llm`
+against a populated `.relay/history/`.
 
 ## Status
 
-- v0.2.0 — adds persisted history, lessons compiler, planner auto-load,
-  two new templates (`bug-rca-fix`, `rfc-then-implement`), Claude Code
-  exporter
-- v0.1.0 — file-based protocol, state machine, manual / OpenAI / Anthropic
-  / Cursor backends, intelligent orchestrator
+- **v0.2.0** — persisted history, lessons compiler (heuristic + LLM), planner
+  auto-load, two new templates (`bug-rca-fix`, `rfc-then-implement`),
+  Claude Code exporter, captured compounding-effect demo.
+- **v0.1.0** — file-based protocol, state machine, manual / OpenAI / Anthropic
+  / Cursor backends, intelligent orchestrator.
 
 See [CHANGELOG.md](CHANGELOG.md) and
 [`docs/specs/2026-04-28-v0.2-design.md`](docs/specs/2026-04-28-v0.2-design.md)
@@ -238,8 +231,8 @@ for the design behind v0.2.
 ## Contributing
 
 Open an issue to discuss what you'd like to change. PRs welcome — the same
-`bug-rca-fix` and `plan-review-implement-audit` templates that ship in
-this repo are how the maintainers ship features here.
+`bug-rca-fix` and `plan-review-implement-audit` templates that ship in this
+repo are how the maintainers ship features here.
 
 ## License
 
