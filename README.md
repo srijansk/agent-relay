@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/banner.svg" width="900" alt="agent-relay — multi-agent workflows that learn from their own past runs">
+</p>
+
 # agent-relay
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -21,22 +25,9 @@ pip install git+https://github.com/srijansk/agent-relay.git
 
 ## How it actually compounds
 
-```mermaid
-flowchart LR
-    A["<b>Run 1</b><br/>thin context<br/>vague rollback"] --> B{Reviewer}
-    B -->|REQUEST_CHANGES| C[".relay/history/<br/>run-1/"]
-    C --> D["<b>relay distill --llm</b><br/>groups bullets<br/>rewrites in 2nd-person"]
-    D --> E["<b>LESSONS.md</b><br/>5 forward-looking lessons<br/>(failing test, named rollback,<br/>adjacent paths, ...)"]
-    E -.injected into prompt.-> F["<b>Run 2</b><br/>different bug,<br/>same task class"]
-    F --> G{Reviewer}
-    G -->|APPROVE on first pass| H[done]
-
-    style A fill:#fde8e8,stroke:#c53030
-    style F fill:#e6f7e9,stroke:#2f855a
-    style E fill:#fff8e0,stroke:#b7791f
-    style B fill:#fde8e8,stroke:#c53030
-    style G fill:#e6f7e9,stroke:#2f855a
-```
+<p align="center">
+  <img src="docs/assets/compounding-loop.svg" width="100%" alt="Three panels showing Run 1 (REQUEST_CHANGES) → relay distill --llm produces 5 forward-looking lessons → Run 2 APPROVE on first pass, with the reviewer's verdict citing each lesson">
+</p>
 
 The loop closes when the reviewer's rejection on Run 1 becomes a lesson the
 planner reads on Run 2. **No memory layer, no vector store** — just markdown
