@@ -1,57 +1,74 @@
-# RFC: Cursor-based pagination for `GET /v1/items`
+```markdown
+# RFC: Implement Cursor-Based Pagination for `GET /v1/items` Endpoint
 
 ## Problem
+The `GET /v1/items` endpoint in the `catalogue` service currently returns the entire result set in one response. This has led to production incidents where large catalogues (over 100k rows) caused the response payload to exceed gateway limits, resulting in server errors (500 status code).
 
-`GET /v1/items` returns the full result set. Two production incidents in
-the last quarter were caused by a customer catalogue growing past 100k
-rows; response payload exceeded the gateway limit and the endpoint 500'd.
+## Goals / Non-goals
 
-## Goals
+### Goals
+- Implement cursor-based pagination for the `GET /v1/items` endpoint.
+- Ensure backwards compatibility with existing clients by providing a deprecation window.
+- Control new pagination behavior via a feature flag for incremental rollout.
+- Maintain fixed result order by `created_at` ASC.
 
-- Bounded response size, regardless of catalogue size.
-- Existing clients continue to work without code changes during a
-  deprecation window.
+### Non-goals
+- Implement server-side filtering or sorting beyond the existing `created_at` ASC order.
+- Change the existing data model or introduce new database indices.
 
-## Non-goals
+## Proposed Design
 
-- Server-side filtering. Clients already filter via query params.
-- Server-side sorting. The result order is fixed by `created_at`.
+### Data Model
+- Introduce a cursor-based pagination mechanism using base64-encoded cursors.
+- Each cursor will include a version number and the `created_at` timestamp of the last item in the current page.
 
-## Proposed design
+### API Changes
+- Add `cursor` and `limit` query parameters to the `GET /v1/items` endpoint.
+- Return a `next_cursor` field in the response to indicate the cursor for the next page of results.
 
-Cursor-based pagination, opaque cursor encoding `(created_at, id)`.
+### File Layout
+- Modify `src/api/items.py` to handle pagination logic.
+- Update `src/api/schemas.py` to include pagination fields in response schemas.
+- Add feature flag logic in `src/app/feature_flags.py` to toggle pagination feature.
 
-- New query params: `?limit=N` (default 50, max 200), `?cursor=<opaque>`.
-- New response schema: `{ "items": [...], "next_cursor": "..." | null }`.
-- For backwards compatibility, when no `limit` and no `cursor` are
-  provided, the legacy unpaginated response is returned with a
-  `Sunset: <date>` header. The flag `feature_flags.paginated_items_v2`
-  controls whether the legacy response is served at all (default: on for
-  v0; off after the deprecation window).
+### Trade-offs
+- Using base64-encoded cursors allows for opaque cursor values but requires careful management of cursor versioning.
+- Introducing pagination may increase complexity in client-side handling of paginated data.
 
-## Alternatives considered
+## Alternatives Considered
 
-- **Offset pagination (`?offset=N`).** Why not: O(N) seek cost on the
-  index, doesn't survive concurrent inserts (skipped/duplicated rows).
-- **Page-token field on every row.** Why not: forces a schema migration
-  in production for a problem the cursor solves at the API layer.
+1. **Offset-based Pagination**
+   - **Why not**: Offset-based pagination can lead to performance issues with large datasets and does not handle data consistency well when items are added or removed.
+
+2. **Keyset Pagination without Encoding**
+   - **Why not**: While simpler, it exposes internal data structure details and lacks the flexibility of versioned cursors for future changes.
 
 ## Risks
 
-- Cursor opacity is a contract; if the encoding changes we break clients.
-  Mitigation: encoding is versioned (`v1:<base64>`), and a v2 reader
-  rejects v1 cursors with a clear error rather than silent misbehaviour.
-- A client with `limit=200` and an aggressive polling loop can still
-  scrape O(N) data quickly. Out of scope for this RFC; covered by
-  separate rate-limit work.
+- **Backward Compatibility**: Existing clients may not handle paginated responses correctly. Mitigation: Provide a deprecation window and clear communication to clients.
+- **Data Consistency**: Items may be added or removed between paginated requests. Mitigation: Use `created_at` timestamps to ensure consistent ordering.
+- **Security**: Base64-encoded cursors could expose sensitive data if not handled properly. Mitigation: Ensure cursors only include non-sensitive data and are securely encoded.
 
-## Test and rollout plan
+## Test and Rollout Plan
 
-- New integration test: paginate through a 5k-item dataset, assert all
-  items returned exactly once and the cursor terminates with `null`.
-- Regression test: pre-existing client (no `limit`/`cursor` params)
-  receives the legacy response with the `Sunset` header.
-- Rollout: ship behind `feature_flags.paginated_items_v2`, leave OFF in
-  production for one week of staging soak.
-- Rollback: flip the flag back to legacy mode; no data migration to
-  unwind.
+### Testing
+- Develop unit tests for pagination logic to ensure correctness in isolation.
+- Expand integration tests in `tests/integration/test_items_api.py` to cover paginated responses.
+
+### Rollout
+- Deploy the feature under a dark launch using feature flags.
+- Gradually enable pagination for a subset of users, monitoring for issues.
+
+### Rollback
+- Monitor logs and metrics for anomalies during rollout.
+- If issues arise, disable the feature flag to revert to non-paginated responses.
+- Communicate with clients about any changes or rollbacks promptly.
+
+### Deprecation Window
+- Announce the deprecation of non-paginated responses with a clear timeline.
+- Provide documentation and examples for clients to transition to paginated requests.
+
+## Cursor Format and Versioning
+- Cursors will include a version number to allow for future changes without breaking existing clients.
+- Document the cursor format and versioning strategy to ensure clarity and consistency in future updates.
+```

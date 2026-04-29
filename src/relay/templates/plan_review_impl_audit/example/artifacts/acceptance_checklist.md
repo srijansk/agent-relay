@@ -1,0 +1,5 @@
+- [ ] GET /healthz returns 200 with status, git_sha, uptime_seconds
+- [ ] Missing GIT_SHA env var → git_sha: "unknown"
+- [ ] uptime_seconds is monotonically non-decreasing across calls
+- [ ] At least one new pytest test asserting JSON shape
+- [ ] No new dependencies (FastAPI + stdlib only)
