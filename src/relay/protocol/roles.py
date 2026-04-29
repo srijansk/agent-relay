@@ -13,6 +13,7 @@ class RoleSpec(BaseModel):
     verdict_field: str | None = None
     approve_value: str | None = None
     reject_value: str | None = None
+    inject_lessons: bool = False
 
     @model_validator(mode="after")
     def validate_verdict_config(self):
