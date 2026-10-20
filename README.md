@@ -228,3 +228,5 @@ repo are how the maintainers ship features here.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+agent-relay is written and maintained by Srijan Saket. The official source is [github.com/srijansk/agent-relay](https://github.com/srijansk/agent-relay).
