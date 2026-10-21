@@ -66,7 +66,7 @@ class TestCreateBackend:
         assert backend.name == "cursor"
 
     def test_unknown_backend_exits(self):
-        from click.exceptions import Exit
+        from typer import Exit
         from relay.cli import _create_backend
         with pytest.raises(Exit):
             _create_backend("nonexistent", {})
